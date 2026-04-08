@@ -1,0 +1,73 @@
+# AGENTS.md — Albion Analytics
+
+이 문서는 사람과 AI 코딩 에이전트가 동일한 전제로 작업하도록 정리한 프로젝트 가이드입니다.
+
+## 목표
+
+- 알비온 온라인 **킬·데스(이벤트)** 데이터 수집 → **빌드(머리·가슴·신발·무기·망토 등) 단위** 집계·통계.
+- 이후 웹에서 op.gg / MetaTFT 스타일로 **티어·순위** 표시. **보정 적용/원시(raw)** 두 뷰는 프론트에서 토글할 계획.
+- **아이템 파워(IP)**, **페임**, **킬 참여 인원(솔로/파티)** 등은 분석 단계에서 가중·필터로 확장.
+
+## 제품·데이터 결정 (확정)
+
+- **저장소**: **PostgreSQL**을 운영 기준 저장소로 둔다. (로컬 프로토타입만 SQLite 등을 써도 됨.)
+- **페이지 단위**: **장비 하나(단일 슬롯 아이템)** 가 하나의 상세 페이지다. URL·DB 조인 키는 게임/API와 동일한 **안정적인 식별자**를 쓴다. Gameinfo 장비 슬롯에는 보통 `type` 문자열(티어·템플릿이 들어간 ID)이 오므로 **canonical 키 = `type`**, 화면에 보이는 **이름은 아이템 메타(또는 로컬 매핑)로 표시**한다. “이름만”으로 키를 쓰지 않는다(번역·표기 차이로 중복·누락이 생김).
+- **장비 페이지 안에 넣을 통계(예시)**: 해당 장비가 **킬(가해자) 관점** 등 선택한 관점에서 잡힌 이벤트만 필터한 뒤, **티어(및 인챈트) 분포**, **함께 많이 쓰인 빌드(다른 슬롯 조합)**, 필요 시 **서버(리전)별 / 전체** 탭 등.
+- **수집**: 가능한 한 넓게 수집한 뒤, **1v1·2v2·파티 규모** 등은 집계·조회 단계에서 필터로 적용한다.
+
+## 스택 (현재)
+
+- **Python 3.11+**, 패키지 이름 `albion-analytics`, 소스는 `src/albion_analytics/`.
+- HTTP: `httpx`, 설정: `pydantic-settings`, 스키마: `pydantic` v2.
+- 린트: `ruff`, 테스트: `pytest` + `pytest-asyncio`.
+
+## 디렉터리
+
+| 경로 | 역할 |
+|------|------|
+| `src/albion_analytics/` | 라이브러리: API 클라이언트, 모델, 수집, 분석 |
+| `src/albion_analytics/api/` | Gameinfo HTTP 클라이언트(재시도·속도 제한) |
+| `src/albion_analytics/models/` | 킬 이벤트·장비 등 Pydantic 모델 |
+| `src/albion_analytics/ingestion/` | 플레이어/길드 등 소스별 fetch |
+| `src/albion_analytics/analysis/` | 집계·티어 계산 등(초기에는 스텁) |
+| `scripts/` | 일회성·운영 스크립트(선택) |
+| `tests/` | 단위 테스트 |
+| `data/` | 로컬 DB·캐시(`.gitignore`, 커밋하지 않음) |
+
+## 알비온 Gameinfo 베이스 URL (지역)
+
+환경 변수 `ALBION_GAMEINFO_BASE_URL`로 지정. 끝에 `/api/gameinfo`까지 포함.
+
+- Europe: `https://gameinfo.albiononline.com/api/gameinfo`
+- Americas: `https://gameinfo-ams.albiononline.com/api/gameinfo`
+- Asia: `https://gameinfo-sgp.albiononline.com/api/gameinfo`
+
+비공식 API이므로 호스트·경로 변경 가능성 있음 — 실패 시 커뮤니티/포럼 최신 정보 확인.
+
+## 명령 (Windows PowerShell 예시)
+
+```powershell
+cd c:\Dev\albion-analytics-cursor
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+ruff check src tests
+pytest
+albion-fetch-sample "PlayerName"
+```
+
+## 코딩 규칙
+
+- 요청은 `GameinfoClient`를 경유하고, 밖에서 `httpx`를 직접 난사하지 않기.
+- API JSON은 버전에 따라 필드가 빠질 수 있음 → 모델은 **Optional**·`model_config`로 느슨하게, 필요 시 `extra` 허용 영역 명시.
+- 새 기능은 **테스트 또는 스크립트로 재현 가능**하게 유지.
+- 사용자 규칙: 불필요한 대규모 리팩터·무관 파일 수정 금지.
+
+## 웹 프론트
+
+아직 포함하지 않음. 추가 시 `apps/web` 또는 별도 저장소로 두고, 이 패키지는 **집계 결과(DB/API)** 를 제공하는 쪽으로 연결하면 됨.
+
+## 열린 결정 사항
+
+- 킬 스트림 소스·크롤 전략: 전역 이벤트 폴링 vs 시드 플레이어 확장 등(부하·정책).
+- 보정 수식: IP·페임 정규화는 수식 확정 후 `analysis`에 반영.
+- 장비 페이지의 “기본 관점”: 킬(가해자) 위주 vs 데스(피해자) 위주 — 둘 다 탭으로 줄지, 하나만 기본으로 할지.
