@@ -1,3 +1,3 @@
-import { env } from '$env/dynamic/public';
+import { PUBLIC_API_BASE_URL } from '$env/static/public';
 
-export const apiBaseUrl = (env.PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
+export const apiBaseUrl = PUBLIC_API_BASE_URL.replace(/\/$/, '');
