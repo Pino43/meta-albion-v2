@@ -107,6 +107,7 @@ ALBION_RATE_LIMIT_PER_SEC=5
 ALBION_HTTP_TIMEOUT_SEC=30
 ALBION_HTTP_MAX_RETRIES=3
 ALBION_HTTP_RETRY_BASE_DELAY_SEC=1.0
+PORT=8000
 ```
 
 Railway의 PostgreSQL 서비스명이 `Postgres`가 아니라면 `DATABASE_URL` 참조 이름을 실제
@@ -234,3 +235,38 @@ albion-collect-events --once --limit 10
 - 기존 DB 데이터는 삭제하지 않습니다. 스키마는 `CREATE TABLE IF NOT EXISTS`,
   `CREATE INDEX IF NOT EXISTS` 중심으로 안전하게 확장합니다.
 - 장비/빌드 통계 정규화 테이블, 공개 API, 웹 프론트, raw/보정 통계 계산은 다음 단계입니다.
+
+## 10. Read-only API service
+
+The collector and API should be two separate Railway services that point at the
+same PostgreSQL service.
+
+Collector service:
+
+- Repository: this GitHub repository.
+- Start command: keep the Dockerfile default command.
+- Purpose: continuously collect, normalize, and aggregate data.
+
+API service:
+
+- Repository: this GitHub repository.
+- Variables: use the same `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
+- Start command override: `albion-serve-api`.
+- Railway provides `PORT`; local default is `8000`.
+
+Validate the API deployment:
+
+```text
+GET https://<api-service-domain>/health
+GET https://<api-service-domain>/ready
+GET https://<api-service-domain>/v1/status
+GET https://<api-service-domain>/v1/rankings/items?slot=main_hand&days=7&region=asia&limit=20
+GET https://<api-service-domain>/v1/rankings/builds?days=7&region=asia&limit=20
+```
+
+Expected behavior:
+
+- `/health` returns `{"status":"ok"}` without touching the DB.
+- `/ready` returns 200 only when the API can connect to Postgres and see the core tables.
+- `/v1/status` table counts should match Railway SQL results.
+- Ranking endpoints return `{ "data": [...], "meta": {...} }`.

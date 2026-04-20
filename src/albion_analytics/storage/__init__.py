@@ -17,14 +17,17 @@ from albion_analytics.storage.loadouts_repo import (
     upsert_event_loadouts,
 )
 from albion_analytics.storage.schema import apply_schema
+from albion_analytics.storage.status_repo import check_core_tables, fetch_api_status
 
 __all__ = [
     "EventIngestionResult",
     "aggregate_daily_usage",
     "apply_schema",
     "assign_patches_from_ranges",
+    "check_core_tables",
     "connect_database",
     "count_pending_event_loadouts",
+    "fetch_api_status",
     "fetch_build_rankings",
     "fetch_item_rankings",
     "finish_collector_run",

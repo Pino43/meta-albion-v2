@@ -9,10 +9,12 @@ description = "Albion Online kill/build statistics — ingestion and analysis"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "fastapi>=0.115",
   "httpx>=0.27",
   "pydantic>=2.6",
   "pydantic-settings>=2.2",
   "psycopg[binary]>=3.2",
+  "uvicorn[standard]>=0.30",
 ]
 
 [project.optional-dependencies]
@@ -32,6 +34,7 @@ albion-top-builds = "albion_analytics.scripts.top_builds:main"
 albion-aggregate-daily = "albion_analytics.scripts.aggregate_daily:main"
 albion-ranking-items = "albion_analytics.scripts.ranking_items:main"
 albion-ranking-builds = "albion_analytics.scripts.ranking_builds:main"
+albion-serve-api = "albion_analytics.scripts.serve_api:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/albion_analytics"]

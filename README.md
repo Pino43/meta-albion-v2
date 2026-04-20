@@ -66,6 +66,31 @@ Railway 기본 실행은 다음과 같습니다.
 - 수집기 시작 시 `CREATE TABLE IF NOT EXISTS` 기반 스키마를 자동 적용
 - DB: Railway PostgreSQL의 `DATABASE_URL`
 
+## Read-only API
+
+Run the ranking API locally:
+
+```powershell
+albion-serve-api
+```
+
+Check the API:
+
+```powershell
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+curl "http://localhost:8000/v1/rankings/items?slot=main_hand&days=7&region=asia&limit=20"
+curl "http://localhost:8000/v1/rankings/builds?days=7&region=asia&limit=20"
+```
+
+On Railway, deploy the API as a second service that uses the same repository and
+the same Postgres `DATABASE_URL`. Keep the collector service on the Dockerfile
+default command, and set only the API service Start Command to:
+
+```text
+albion-serve-api
+```
+
 ## Development
 
 ```powershell
