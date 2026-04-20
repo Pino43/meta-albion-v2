@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     collect_max_pages: int = 10
     collect_poll_interval_sec: float = 60.0
     collect_error_backoff_sec: float = 30.0
+    collect_normalize_after_round: bool = True
+    normalize_batch_size: int = 1000
 
     # Comma-separated region keys: europe, americas, asia. Empty means all.
     collect_regions: str = "europe,americas,asia"

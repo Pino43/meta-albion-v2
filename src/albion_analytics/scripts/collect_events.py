@@ -15,6 +15,7 @@ from albion_analytics.config import get_settings
 from albion_analytics.ingestion.event_feed import collect_events_round
 from albion_analytics.storage.db import connect_database
 from albion_analytics.storage.events_repo import finish_collector_run, start_collector_run
+from albion_analytics.storage.loadouts_repo import normalize_pending_event_loadouts
 from albion_analytics.storage.schema import apply_schema
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,12 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
                     conn,
                     limit=limit,
                 )
+                normalized_loadouts = 0
+                if s.collect_normalize_after_round:
+                    normalized_loadouts = await normalize_pending_event_loadouts(
+                        conn,
+                        limit=s.normalize_batch_size,
+                    )
                 totals = {
                     "total_fetched": sum(r.fetched for r in results),
                     "total_inserted": sum(r.inserted for r in results),
@@ -84,17 +91,20 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
                     run_id,
                     status="success",
                     patch_rows_updated=patch_n,
+                    normalized_loadouts=normalized_loadouts,
                     **totals,
                 )
                 logger.info(
                     (
                         "collection_round status=success fetched=%s inserted=%s "
-                        "skipped_invalid=%s patch_updated=%s duration_sec=%.3f"
+                        "skipped_invalid=%s patch_updated=%s normalized_loadouts=%s "
+                        "duration_sec=%.3f"
                     ),
                     totals["total_fetched"],
                     totals["total_inserted"],
                     totals["total_skipped_invalid"],
                     patch_n,
+                    normalized_loadouts,
                     time.monotonic() - started_at,
                 )
             except Exception as exc:

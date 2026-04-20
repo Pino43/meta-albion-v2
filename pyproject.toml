@@ -26,6 +26,9 @@ dev = [
 albion-fetch-sample = "albion_analytics.scripts.fetch_sample:main"
 albion-init-db = "albion_analytics.scripts.init_db:main"
 albion-collect-events = "albion_analytics.scripts.collect_events:main"
+albion-normalize-events = "albion_analytics.scripts.normalize_events:main"
+albion-top-items = "albion_analytics.scripts.top_items:main"
+albion-top-builds = "albion_analytics.scripts.top_builds:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/albion_analytics"]

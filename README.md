@@ -38,6 +38,14 @@ albion-collect-events --once --limit 10
 albion-collect-events
 ```
 
+정규화와 초기 통계 확인:
+
+```powershell
+albion-normalize-events --batch-size 1000
+albion-top-items --slot main_hand --perspective killer --region asia --days 1
+albion-top-builds --perspective killer --region asia --days 1
+```
+
 플레이어 샘플 조회:
 
 ```powershell
