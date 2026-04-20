@@ -1,9 +1,9 @@
 # GitHub + Railway 배포 가이드
 
-이 가이드는 Albion Analytics 수집기를 GitHub에 올리고, Railway에서
-PostgreSQL + 상시 worker로 실행하는 절차입니다. 이번 배포 범위는 웹/API가 아니라
-`kill_events`에 Europe, Americas, Asia 3개 리전의 raw kill event를 계속 쌓는
-수집 MVP입니다.
+이 가이드는 Albion Analytics를 GitHub에 올리고, Railway에서 collector/API를
+분리 실행하며, Cloudflare Pages에 static web을 배포하는 절차입니다. collector는
+Europe, Americas, Asia 3개 리전의 raw kill event를 계속 쌓고, API는 같은
+PostgreSQL의 집계 테이블을 read-only로 제공합니다.
 
 ## 1. 현재 배포 구조
 
@@ -119,6 +119,12 @@ API_CACHE_TTL_SEC=60
 API_RATE_LIMIT_PER_MINUTE=120
 API_DB_POOL_MIN_SIZE=1
 API_DB_POOL_MAX_SIZE=5
+API_CORS_ALLOW_ORIGINS=https://<web-domain>
+OPS_DB_WARNING_GB=40
+OPS_DB_CRITICAL_GB=48
+OPS_COLLECTOR_MAX_AGE_MINUTES=10
+OPS_READY_URL=https://<api-service-domain>/ready
+OPS_WEBHOOK_URL=<optional-discord-or-slack-webhook>
 ```
 
 Railway의 PostgreSQL 서비스명이 `Postgres`가 아니라면 `DATABASE_URL` 참조 이름을 실제
@@ -269,6 +275,7 @@ API service:
 - Set `API_ADMIN_TOKEN` to a long random value; `/v1/status` requires it.
 - Keep `API_DOCS_ENABLED=false` for public deployments.
 - Keep Cloudflare or another edge rate limit in front of the Railway public URL.
+- Set `API_CORS_ALLOW_ORIGINS` to the Cloudflare Pages web domain.
 
 Validate the API deployment:
 
@@ -286,3 +293,20 @@ Expected behavior:
 - `/ready` returns 200 only when the API can connect to Postgres and see the core tables.
 - `/v1/status` requires `Authorization: Bearer <API_ADMIN_TOKEN>` and table counts should match Railway SQL results.
 - Ranking endpoints return `{ "data": [...], "meta": {...} }`.
+
+Web service:
+
+- Deploy `apps/web` to Cloudflare Pages.
+- Build command: `npm run build`.
+- Output directory: `build`.
+- Set `PUBLIC_API_BASE_URL` to the Railway API custom domain.
+- The app is a static SPA: SvelteKit `ssr = false`, `prerender = true`.
+
+Operational check:
+
+```powershell
+albion-check-ops --ready-url https://<api-service-domain>/ready
+```
+
+The command returns JSON with `ok`, `warning`, or `critical` status and can send
+the same payload to `OPS_WEBHOOK_URL`.

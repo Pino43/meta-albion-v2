@@ -7,11 +7,13 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from hmac import compare_digest
 from typing import Annotated, Any, Literal
 
 import psycopg
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from psycopg_pool import AsyncConnectionPool
 
@@ -166,6 +168,22 @@ def _authorize_admin(request: Request) -> None:
         raise HTTPException(status_code=401, detail="unauthorized")
 
 
+def _parse_cors_origins(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _ranking_meta(
+    *,
+    settings: Settings,
+    **values: Any,
+) -> dict[str, Any]:
+    return {
+        **values,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "cache_ttl_sec": settings.api_cache_ttl_sec,
+    }
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
@@ -191,6 +209,16 @@ def create_app(
         openapi_url="/openapi.json" if s.api_docs_enabled else None,
         lifespan=_lifespan,
     )
+    cors_origins = _parse_cors_origins(s.api_cors_allow_origins)
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_methods=["GET", "OPTIONS"],
+            allow_headers=["authorization", "content-type"],
+            max_age=600,
+        )
+
     app.state.settings = s
     app.state.connect_database = connector
     app.state.db_pool = None
@@ -270,13 +298,14 @@ def create_app(
         )
         return {
             "data": rows,
-            "meta": {
-                "slot": slot,
-                "days": days,
-                "region": region,
-                "perspective": perspective,
-                "limit": limit,
-            },
+            "meta": _ranking_meta(
+                settings=request.app.state.settings,
+                slot=slot,
+                days=days,
+                region=region,
+                perspective=perspective,
+                limit=limit,
+            ),
         }
 
     @app.get("/v1/rankings/builds")
@@ -303,12 +332,13 @@ def create_app(
         )
         return {
             "data": rows,
-            "meta": {
-                "days": days,
-                "region": region,
-                "perspective": perspective,
-                "limit": limit,
-            },
+            "meta": _ranking_meta(
+                settings=request.app.state.settings,
+                days=days,
+                region=region,
+                perspective=perspective,
+                limit=limit,
+            ),
         }
 
     return app

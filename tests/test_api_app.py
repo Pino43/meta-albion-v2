@@ -90,6 +90,28 @@ def test_status_rejects_invalid_admin_token() -> None:
     assert response.status_code == 401
 
 
+def test_cors_allows_configured_web_origin() -> None:
+    app = create_app(
+        settings=Settings(
+            database_url="postgresql://example",
+            api_cors_allow_origins="https://meta.example.com",
+        ),
+        connector=fake_connector,
+    )
+    client = TestClient(app)
+
+    response = client.options(
+        "/v1/rankings/builds",
+        headers={
+            "Origin": "https://meta.example.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://meta.example.com"
+
+
 def test_status_returns_counts_and_latest_run_with_admin_token() -> None:
     app = create_app(
         settings=Settings(database_url="postgresql://example", api_admin_token="secret"),
@@ -173,6 +195,8 @@ def test_item_rankings_passes_validated_defaults_to_reader() -> None:
         "limit": 20,
     }
     assert response.json()["data"] == [{"item_type": "T4_MAIN_SWORD", "uses": 3}]
+    assert response.json()["meta"]["cache_ttl_sec"] == 60.0
+    assert "generated_at" in response.json()["meta"]
 
 
 def test_item_rankings_are_cached_for_repeated_requests() -> None:
@@ -246,7 +270,13 @@ def test_build_rankings_passes_validated_params_to_reader() -> None:
         "region": "europe",
         "limit": 5,
     }
-    assert response.json()["meta"] == {
+    meta = response.json()["meta"]
+    assert "generated_at" in meta
+    assert meta["cache_ttl_sec"] == 60.0
+    assert {
+        key: meta[key]
+        for key in ("days", "region", "perspective", "limit")
+    } == {
         "days": 3,
         "region": "europe",
         "perspective": "participant",

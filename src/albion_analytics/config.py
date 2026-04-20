@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     api_rate_limit_per_minute: int = 120
     api_db_pool_min_size: int = 1
     api_db_pool_max_size: int = 5
+    api_cors_allow_origins: str = ""
+
+    # Operational check defaults.
+    ops_db_warning_gb: float = 40.0
+    ops_db_critical_gb: float = 48.0
+    ops_collector_max_age_minutes: int = 10
+    ops_ready_url: str | None = None
+    ops_webhook_url: str | None = None
 
     # Comma-separated region keys: europe, americas, asia. Empty means all.
     collect_regions: str = "europe,americas,asia"

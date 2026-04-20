@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "albion-analytics"
 version = "0.1.0"
-description = "Albion Online kill/build statistics — ingestion and analysis"
+description = "Albion Online kill/build statistics - ingestion and analysis"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -36,6 +36,7 @@ albion-ranking-items = "albion_analytics.scripts.ranking_items:main"
 albion-ranking-builds = "albion_analytics.scripts.ranking_builds:main"
 albion-serve-api = "albion_analytics.scripts.serve_api:main"
 albion-cleanup-retention = "albion_analytics.scripts.cleanup_retention:main"
+albion-check-ops = "albion_analytics.scripts.check_ops:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/albion_analytics"]

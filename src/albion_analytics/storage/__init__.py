@@ -16,6 +16,7 @@ from albion_analytics.storage.loadouts_repo import (
     normalize_pending_event_loadouts,
     upsert_event_loadouts,
 )
+from albion_analytics.storage.ops_repo import fetch_ops_snapshot
 from albion_analytics.storage.retention_repo import cleanup_retention
 from albion_analytics.storage.schema import apply_schema
 from albion_analytics.storage.status_repo import check_core_tables, fetch_api_status
@@ -32,6 +33,7 @@ __all__ = [
     "fetch_api_status",
     "fetch_build_rankings",
     "fetch_item_rankings",
+    "fetch_ops_snapshot",
     "finish_collector_run",
     "normalize_pending_event_loadouts",
     "start_collector_run",

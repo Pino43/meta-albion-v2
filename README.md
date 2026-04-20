@@ -3,8 +3,8 @@
 Albion Online Gameinfo API의 kill event를 수집해 PostgreSQL에 저장하고, 이후 장비/빌드
 단위 통계와 웹 랭킹 화면으로 확장하기 위한 프로젝트입니다.
 
-현재 단계는 **Railway Postgres + 상시 worker 수집 MVP**입니다. 웹 프론트와 공개 API는
-아직 포함하지 않습니다.
+현재 단계는 **Railway Postgres + 상시 collector**, **read-only ranking API**,
+**Cloudflare Pages용 static SvelteKit SPA**까지 포함합니다.
 
 ## Requirements
 
@@ -93,6 +93,30 @@ default command, and set only the API service Start Command to:
 
 ```text
 albion-serve-api
+```
+
+## Web
+
+The static SvelteKit web app lives in `apps/web`. It does not use SSR.
+
+```powershell
+cd apps/web
+npm install
+npm run build
+```
+
+Cloudflare Pages:
+
+- Build command: `npm run build`
+- Output directory: `build`
+- Environment variable: `PUBLIC_API_BASE_URL=https://<api-domain>`
+
+## Operations
+
+Check deployment health and storage usage:
+
+```powershell
+albion-check-ops --ready-url https://<api-domain>/ready
 ```
 
 ## Development
