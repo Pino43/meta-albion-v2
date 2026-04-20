@@ -7,9 +7,8 @@ import asyncio
 import logging
 import sys
 
-import psycopg
-
 from albion_analytics.config import get_settings
+from albion_analytics.storage.db import connect_database
 from albion_analytics.storage.schema import apply_schema
 
 logger = logging.getLogger(__name__)
@@ -20,11 +19,13 @@ async def _run() -> int:
     if not s.database_url:
         print("DATABASE_URL is not set.", file=sys.stderr)
         return 1
-    conn = await psycopg.AsyncConnection.connect(s.database_url)
+    logger.info("Connecting to Postgres for schema initialization")
+    conn = await connect_database(s)
     try:
         await apply_schema(conn)
     finally:
         await conn.close()
+    logger.info("Schema initialization complete")
     return 0
 
 

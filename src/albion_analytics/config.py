@@ -18,6 +18,8 @@ class Settings(BaseSettings):
 
     # postgresql://user:pass@host:5432/dbname - required for collection/storage.
     database_url: str | None = None
+    database_connect_max_retries: int = 10
+    database_connect_retry_delay_sec: float = 3.0
 
     # /events collection controls.
     collect_events_limit: int = 1000

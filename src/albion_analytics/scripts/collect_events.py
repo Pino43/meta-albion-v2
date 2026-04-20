@@ -13,6 +13,7 @@ import psycopg
 
 from albion_analytics.config import get_settings
 from albion_analytics.ingestion.event_feed import collect_events_round
+from albion_analytics.storage.db import connect_database
 from albion_analytics.storage.events_repo import finish_collector_run, start_collector_run
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
 
             try:
                 if conn is None or conn.closed:
-                    conn = await psycopg.AsyncConnection.connect(s.database_url)
+                    conn = await connect_database(s)
 
                 run_id = await start_collector_run(conn)
                 results, patch_n = await collect_events_round(

@@ -20,8 +20,8 @@ builder = "RAILPACK"
 buildCommand = "pip install -e ."
 
 [deploy]
-preDeployCommand = "albion-init-db"
-startCommand = "albion-collect-events"
+preDeployCommand = "python -m albion_analytics.scripts.init_db"
+startCommand = "python -m albion_analytics.scripts.collect_events"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 ```
@@ -94,6 +94,8 @@ railway up
 
 ```text
 DATABASE_URL=${{Postgres.DATABASE_URL}}
+DATABASE_CONNECT_MAX_RETRIES=10
+DATABASE_CONNECT_RETRY_DELAY_SEC=3
 COLLECT_REGIONS=europe,americas,asia
 COLLECT_POLL_INTERVAL_SEC=60
 COLLECT_EVENTS_LIMIT=1000
@@ -124,6 +126,13 @@ INFO collection_round status=success fetched=... inserted=... skipped_invalid=..
 수집기가 일시적인 API 오류나 네트워크 오류를 만나면 종료하지 않고
 `COLLECT_ERROR_BACKOFF_SEC` 이후 재시도합니다. Railway 재배포나 중지 신호를 받으면 현재
 라운드 후 DB 연결을 닫고 종료합니다.
+
+Pre-deploy 단계에서 실패하면 Railway의 deploy log에서 `preDeployCommand` 출력을 먼저
+확인합니다. 자주 나는 원인은 다음입니다.
+
+- `DATABASE_URL is not set`: 코드 서비스에 `DATABASE_URL=${{Postgres.DATABASE_URL}}`가 없습니다.
+- `could not translate host name` 또는 connection refused: Postgres 서비스가 준비 중이거나 변수 참조가 잘못됐습니다. 이 프로젝트는 기본 10회, 3초 간격으로 재시도합니다.
+- `No module named albion_analytics`: build command가 `pip install -e .`로 실행되지 않았거나 Railway root directory가 저장소 루트가 아닙니다.
 
 ## 7. DB 검증 SQL
 

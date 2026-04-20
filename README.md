@@ -51,8 +51,8 @@ GitHub 연결과 Railway 배포 절차는 [docs/RAILWAY_DEPLOYMENT.md](docs/RAIL
 
 Railway 기본 실행은 다음과 같습니다.
 
-- `preDeployCommand`: `albion-init-db`
-- `startCommand`: `albion-collect-events`
+- `preDeployCommand`: `python -m albion_analytics.scripts.init_db`
+- `startCommand`: `python -m albion_analytics.scripts.collect_events`
 - DB: Railway PostgreSQL의 `DATABASE_URL`
 
 ## Development
