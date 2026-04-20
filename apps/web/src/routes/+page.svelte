@@ -14,6 +14,8 @@
   } from '$lib/api';
   import { itemImageUrl, mainItemFromBuildKey, parseItemType } from '$lib/item';
 
+  type ApiStatus = 'checking' | 'connected' | 'error';
+
   const dayOptions = [1, 7, 30];
   const limitOptions = [10, 20, 50, 100];
 
@@ -28,9 +30,12 @@
   let rows: Array<ItemRanking | BuildRanking> = [];
   let meta: RankingMeta | null = null;
   let loading = true;
-  let error = '';
+  let hasError = false;
+  let apiStatus: ApiStatus = 'checking';
   let initialized = false;
   $: queryKey = JSON.stringify(filters);
+  $: apiStatusLabel =
+    apiStatus === 'checking' ? 'Checking API' : apiStatus === 'connected' ? 'API connected' : 'API issue';
 
   $: if (initialized && queryKey) {
     void load();
@@ -61,16 +66,19 @@
   async function load() {
     const current = { ...filters };
     loading = true;
-    error = '';
+    hasError = false;
+    apiStatus = 'checking';
     updateUrl(current);
     try {
       const result = await fetchRankings(current);
       rows = result.data;
       meta = result.meta;
-    } catch (err) {
+      apiStatus = 'connected';
+    } catch {
       rows = [];
       meta = null;
-      error = err instanceof Error ? err.message : 'Unable to load rankings';
+      hasError = true;
+      apiStatus = 'error';
     } finally {
       loading = false;
     }
@@ -193,7 +201,20 @@
       </span>
     </div>
     {#if meta?.generated_at}
-      <time datetime={meta.generated_at}>Updated {new Date(meta.generated_at).toLocaleTimeString()}</time>
+      <div class="status-stack">
+        <span class:connected={apiStatus === 'connected'} class:error={apiStatus === 'error'} class="api-status">
+          <span></span>
+          {apiStatusLabel}
+        </span>
+        <time datetime={meta.generated_at}>Updated {new Date(meta.generated_at).toLocaleTimeString()}</time>
+      </div>
+    {:else}
+      <div class="status-stack">
+        <span class:connected={apiStatus === 'connected'} class:error={apiStatus === 'error'} class="api-status">
+          <span></span>
+          {apiStatusLabel}
+        </span>
+      </div>
     {/if}
   </section>
 
@@ -204,10 +225,11 @@
           <div class="loading-row"></div>
         {/each}
       </div>
-    {:else if error}
+    {:else if hasError}
       <div class="empty-state">
-        <h2>Rankings are taking a breather.</h2>
-        <p>{error}</p>
+        <h2>API connection issue.</h2>
+        <p>Ranking data could not be loaded. Please try again in a moment.</p>
+        <button on:click={() => void load()}>Retry</button>
       </div>
     {:else if rows.length === 0}
       <div class="empty-state">
@@ -394,6 +416,54 @@
     font-size: 14px;
   }
 
+  .status-stack {
+    align-items: end;
+    display: grid;
+    gap: 6px;
+    justify-items: end;
+  }
+
+  .api-status {
+    align-items: center;
+    background: #edf2ee;
+    border: 1px solid #d8e0db;
+    border-radius: 8px;
+    color: #40554b;
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 800;
+    gap: 7px;
+    min-height: 30px;
+    padding: 0 10px;
+  }
+
+  .api-status span {
+    background: #7d8b85;
+    border-radius: 999px;
+    height: 8px;
+    width: 8px;
+  }
+
+  .api-status.connected {
+    background: #edf8dd;
+    border-color: #c7da77;
+    color: #405018;
+  }
+
+  .api-status.connected span {
+    background: #6c8f00;
+  }
+
+  .api-status.error {
+    background: #fff0ef;
+    border-color: #efb3ad;
+    color: #a3372f;
+  }
+
+  .api-status.error span {
+    background: #e14b4b;
+  }
+
   .ranking-surface {
     overflow-x: auto;
   }
@@ -488,6 +558,18 @@
     margin: 0;
   }
 
+  .empty-state button {
+    background: #101010;
+    border: 0;
+    border-radius: 8px;
+    color: #dbf264;
+    cursor: pointer;
+    font-weight: 800;
+    margin-top: 18px;
+    min-height: 40px;
+    padding: 0 18px;
+  }
+
   @keyframes pulse {
     0%,
     100% {
@@ -515,6 +597,11 @@
       align-items: start;
       display: grid;
       gap: 8px;
+    }
+
+    .status-stack {
+      align-items: start;
+      justify-items: start;
     }
   }
 </style>
