@@ -17,6 +17,7 @@ def test_item_aggregate_sql_uses_selected_slot_column() -> None:
 
     assert "main_hand_type AS item_type" in sql
     assert "ON CONFLICT (day, source_region, perspective, slot, item_type)" in sql
+    assert "IS DISTINCT FROM" in sql
 
 
 def test_build_aggregate_sql_requires_build_key() -> None:
@@ -25,6 +26,7 @@ def test_build_aggregate_sql_requires_build_key() -> None:
     assert "build_key IS NOT NULL" in sql
     assert "build_key <> ''" in sql
     assert "ON CONFLICT (day, source_region, perspective, build_key)" in sql
+    assert "IS DISTINCT FROM" in sql
 
 
 def test_utc_day_lower_bound_includes_today_as_one_day() -> None:

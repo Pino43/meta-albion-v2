@@ -81,6 +81,19 @@ def build_item_usage_aggregate_sql(slot: str) -> str:
       avg_participants = EXCLUDED.avg_participants,
       total_kill_fame = EXCLUDED.total_kill_fame,
       updated_at = EXCLUDED.updated_at
+    WHERE (
+      daily_item_usage.uses,
+      daily_item_usage.events,
+      daily_item_usage.avg_item_power,
+      daily_item_usage.avg_participants,
+      daily_item_usage.total_kill_fame
+    ) IS DISTINCT FROM (
+      EXCLUDED.uses,
+      EXCLUDED.events,
+      EXCLUDED.avg_item_power,
+      EXCLUDED.avg_participants,
+      EXCLUDED.total_kill_fame
+    )
     """
 
 
@@ -121,6 +134,19 @@ def build_build_usage_aggregate_sql() -> str:
       avg_participants = EXCLUDED.avg_participants,
       total_kill_fame = EXCLUDED.total_kill_fame,
       updated_at = EXCLUDED.updated_at
+    WHERE (
+      daily_build_usage.uses,
+      daily_build_usage.events,
+      daily_build_usage.avg_item_power,
+      daily_build_usage.avg_participants,
+      daily_build_usage.total_kill_fame
+    ) IS DISTINCT FROM (
+      EXCLUDED.uses,
+      EXCLUDED.events,
+      EXCLUDED.avg_item_power,
+      EXCLUDED.avg_participants,
+      EXCLUDED.total_kill_fame
+    )
     """
 
 
