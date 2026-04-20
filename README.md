@@ -84,6 +84,9 @@ curl "http://localhost:8000/v1/rankings/items?slot=main_hand&days=7&region=asia&
 curl "http://localhost:8000/v1/rankings/builds?days=7&region=asia&limit=20"
 ```
 
+`/v1/status` is hidden unless `API_ADMIN_TOKEN` is configured. When configured,
+call it with `Authorization: Bearer <token>`.
+
 On Railway, deploy the API as a second service that uses the same repository and
 the same Postgres `DATABASE_URL`. Keep the collector service on the Dockerfile
 default command, and set only the API service Start Command to:

@@ -67,11 +67,35 @@ def test_ready_returns_503_when_core_tables_are_missing() -> None:
     response = client.get("/ready")
 
     assert response.status_code == 503
-    assert response.json()["detail"]["missing_tables"] == ["daily_item_usage"]
+    assert response.json()["detail"] == {"status": "not_ready"}
 
 
-def test_status_returns_counts_and_latest_run() -> None:
+def test_status_is_hidden_without_admin_token() -> None:
     client = make_client()
+
+    response = client.get("/v1/status")
+
+    assert response.status_code == 404
+
+
+def test_status_rejects_invalid_admin_token() -> None:
+    app = create_app(
+        settings=Settings(database_url="postgresql://example", api_admin_token="secret"),
+        connector=fake_connector,
+    )
+    client = TestClient(app)
+
+    response = client.get("/v1/status", headers={"Authorization": "Bearer wrong"})
+
+    assert response.status_code == 401
+
+
+def test_status_returns_counts_and_latest_run_with_admin_token() -> None:
+    app = create_app(
+        settings=Settings(database_url="postgresql://example", api_admin_token="secret"),
+        connector=fake_connector,
+    )
+    client = TestClient(app)
 
     async def fake_status(_conn: FakeConnection) -> dict[str, Any]:
         return {
@@ -91,7 +115,7 @@ def test_status_returns_counts_and_latest_run() -> None:
 
     client.app.state.fetch_api_status = fake_status
 
-    response = client.get("/v1/status")
+    response = client.get("/v1/status", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
     body = response.json()
@@ -103,6 +127,13 @@ def test_status_returns_counts_and_latest_run() -> None:
         "daily_item_usage",
         "daily_build_usage",
     ]
+
+
+def test_docs_are_disabled_by_default() -> None:
+    client = make_client()
+
+    assert client.get("/docs").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
 
 
 def test_item_rankings_passes_validated_defaults_to_reader() -> None:
@@ -142,6 +173,34 @@ def test_item_rankings_passes_validated_defaults_to_reader() -> None:
         "limit": 20,
     }
     assert response.json()["data"] == [{"item_type": "T4_MAIN_SWORD", "uses": 3}]
+
+
+def test_item_rankings_are_cached_for_repeated_requests() -> None:
+    client = make_client()
+    calls = 0
+
+    async def fake_items(
+        _conn: FakeConnection,
+        *,
+        slot: str,
+        perspective: str,
+        days: int,
+        region: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        nonlocal calls
+        calls += 1
+        return [{"item_type": f"T4_MAIN_SWORD_{calls}", "uses": calls}]
+
+    client.app.state.fetch_item_rankings = fake_items
+
+    first = client.get("/v1/rankings/items?slot=main_hand&region=asia")
+    second = client.get("/v1/rankings/items?slot=main_hand&region=asia")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert calls == 1
+    assert second.json()["data"] == first.json()["data"]
 
 
 def test_item_rankings_rejects_bad_slot_days_and_limit() -> None:
@@ -201,3 +260,34 @@ def test_build_rankings_rejects_invalid_perspective_days_and_limit() -> None:
     assert client.get("/v1/rankings/builds?perspective=bad").status_code == 422
     assert client.get("/v1/rankings/builds?days=0").status_code == 422
     assert client.get("/v1/rankings/builds?limit=0").status_code == 422
+
+
+def test_rate_limit_returns_429_after_limit() -> None:
+    app = create_app(
+        settings=Settings(
+            database_url="postgresql://example",
+            api_rate_limit_per_minute=2,
+            api_cache_ttl_sec=0,
+        ),
+        connector=fake_connector,
+    )
+    client = TestClient(app)
+
+    async def fake_builds(
+        _conn: FakeConnection,
+        *,
+        perspective: str,
+        days: int,
+        region: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        return [{"build_key": "head|armor|shoes|weapon", "uses": 4}]
+
+    client.app.state.fetch_build_rankings = fake_builds
+
+    assert client.get("/v1/rankings/builds").status_code == 200
+    assert client.get("/v1/rankings/builds").status_code == 200
+    response = client.get("/v1/rankings/builds")
+
+    assert response.status_code == 429
+    assert response.json() == {"detail": "rate_limited"}

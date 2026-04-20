@@ -112,6 +112,13 @@ ALBION_HTTP_TIMEOUT_SEC=30
 ALBION_HTTP_MAX_RETRIES=3
 ALBION_HTTP_RETRY_BASE_DELAY_SEC=1.0
 PORT=8000
+API_DOCS_ENABLED=false
+API_ADMIN_TOKEN=<long-random-token>
+API_STATUS_PUBLIC=false
+API_CACHE_TTL_SEC=60
+API_RATE_LIMIT_PER_MINUTE=120
+API_DB_POOL_MIN_SIZE=1
+API_DB_POOL_MAX_SIZE=5
 ```
 
 Railway의 PostgreSQL 서비스명이 `Postgres`가 아니라면 `DATABASE_URL` 참조 이름을 실제
@@ -259,6 +266,9 @@ API service:
 - Variables: use the same `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
 - Start command override: `albion-serve-api`.
 - Railway provides `PORT`; local default is `8000`.
+- Set `API_ADMIN_TOKEN` to a long random value; `/v1/status` requires it.
+- Keep `API_DOCS_ENABLED=false` for public deployments.
+- Keep Cloudflare or another edge rate limit in front of the Railway public URL.
 
 Validate the API deployment:
 
@@ -274,5 +284,5 @@ Expected behavior:
 
 - `/health` returns `{"status":"ok"}` without touching the DB.
 - `/ready` returns 200 only when the API can connect to Postgres and see the core tables.
-- `/v1/status` table counts should match Railway SQL results.
+- `/v1/status` requires `Authorization: Bearer <API_ADMIN_TOKEN>` and table counts should match Railway SQL results.
 - Ranking endpoints return `{ "data": [...], "meta": {...} }`.

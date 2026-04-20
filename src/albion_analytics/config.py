@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     daily_aggregate_retention_days: int = 90
     collector_run_retention_days: int = 30
 
+    # Read-only API controls.
+    api_docs_enabled: bool = False
+    api_admin_token: str | None = None
+    api_status_public: bool = False
+    api_cache_ttl_sec: float = 60.0
+    api_rate_limit_per_minute: int = 120
+    api_db_pool_min_size: int = 1
+    api_db_pool_max_size: int = 5
+
     # Comma-separated region keys: europe, americas, asia. Empty means all.
     collect_regions: str = "europe,americas,asia"
 

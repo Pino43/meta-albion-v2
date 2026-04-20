@@ -10,4 +10,7 @@ COPY src ./src
 
 RUN pip install --no-cache-dir .
 
+RUN addgroup --system app && adduser --system --ingroup app app
+USER app
+
 CMD ["python", "-m", "albion_analytics.scripts.collect_events"]
