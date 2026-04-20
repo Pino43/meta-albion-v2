@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     database_connect_retry_delay_sec: float = 3.0
 
     # /events collection controls.
-    collect_events_limit: int = 1000
+    collect_events_limit: int = 51
     collect_max_pages: int = 10
     collect_poll_interval_sec: float = 60.0
     collect_error_backoff_sec: float = 30.0

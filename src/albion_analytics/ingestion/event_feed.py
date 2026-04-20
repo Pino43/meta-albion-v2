@@ -20,12 +20,18 @@ from albion_analytics.storage.events_repo import (
 
 logger = logging.getLogger(__name__)
 
+_GAMEINFO_EVENTS_MAX_LIMIT = 51
+
 
 def _event_id_as_int(event: dict[str, Any]) -> int | None:
     try:
         return int(event["EventId"])
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def _clamp_events_page_size(requested: int) -> int:
+    return max(1, min(requested, _GAMEINFO_EVENTS_MAX_LIMIT))
 
 
 async def _fetch_new_events(
@@ -78,7 +84,14 @@ async def collect_events_round(
         raise ValueError("database_url (DATABASE_URL) is required for collection")
 
     regions = parse_region_filter(s.collect_regions)
-    page_size = limit if limit is not None else s.collect_events_limit
+    requested_page_size = limit if limit is not None else s.collect_events_limit
+    page_size = _clamp_events_page_size(requested_page_size)
+    if page_size != requested_page_size:
+        logger.warning(
+            "Clamped /events page size from %s to %s",
+            requested_page_size,
+            page_size,
+        )
     results: list[EventIngestionResult] = []
 
     for region_id in regions:

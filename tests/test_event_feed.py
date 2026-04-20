@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from albion_analytics.ingestion.event_feed import _fetch_new_events
+from albion_analytics.ingestion.event_feed import _clamp_events_page_size, _fetch_new_events
 
 
 class FakeEventsClient:
@@ -15,6 +15,12 @@ class FakeEventsClient:
     async def get_recent_events(self, *, limit: int, offset: int) -> list[dict[str, Any]]:
         self.calls.append((limit, offset))
         return self.pages.get(offset, [])
+
+
+def test_clamp_events_page_size_to_gameinfo_limit() -> None:
+    assert _clamp_events_page_size(1000) == 51
+    assert _clamp_events_page_size(51) == 51
+    assert _clamp_events_page_size(0) == 1
 
 
 @pytest.mark.asyncio
