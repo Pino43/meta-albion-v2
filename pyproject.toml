@@ -12,6 +12,7 @@ dependencies = [
   "httpx>=0.27",
   "pydantic>=2.6",
   "pydantic-settings>=2.2",
+  "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +24,8 @@ dev = [
 
 [project.scripts]
 albion-fetch-sample = "albion_analytics.scripts.fetch_sample:main"
+albion-init-db = "albion_analytics.scripts.init_db:main"
+albion-collect-events = "albion_analytics.scripts.collect_events:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/albion_analytics"]

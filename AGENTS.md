@@ -15,10 +15,16 @@
 - **장비 페이지 안에 넣을 통계(예시)**: 해당 장비가 **킬(가해자) 관점** 등 선택한 관점에서 잡힌 이벤트만 필터한 뒤, **티어(및 인챈트) 분포**, **함께 많이 쓰인 빌드(다른 슬롯 조합)**, 필요 시 **서버(리전)별 / 전체** 탭 등.
 - **수집**: 가능한 한 넓게 수집한 뒤, **1v1·2v2·파티 규모** 등은 집계·조회 단계에서 필터로 적용한다.
 
+## 로컬 PC에서 수집할 때 (전원·보관)
+
+- **수집기(`albion-collect-events`)는 그 프로세스가 돌아가는 동안만** API를 폴링한다. **PC를 끄거나 잠자기**에 들어가면 그 시간에는 **새 데이터가 들어오지 않는다**(타임라인에 빈 구간이 생김). 알비온 API가 과거 구간을 무료로 전부 돌려주지 않을 수 있어, **끄기 전까지 쌓인 구간만** 확실히 갖는 셈이다.
+- **이미 Postgres에 들어간 데이터**는 전원을 꺼도 **디스크에 남는다**(Docker 볼륨·로컬 데이터 디렉터리 등). `docker compose down`만 해도 **볼륨을 지우지 않는 한** 데이터는 유지된다. 장기 보관은 **`pg_dump` 백업** 또는 볼륨/디스크 백업을 권장한다.
+- **배포 없이도** “끄지 않는 어딘가”에만 옮기면 상시 수집에 가까워진다: 저렴한 **VPS**, 집에서 켜 두는 **미니 PC/NAS**, **클라우드 VM** 등에 동일한 Postgres + 수집기를 두고 `DATABASE_URL`만 맞추면 된다. 나중에 웹을 올릴 때 **같은 DB를 그대로 쓰거나 `pg_dump`로 이전**하면 된다.
+
 ## 스택 (현재)
 
 - **Python 3.11+**, 패키지 이름 `albion-analytics`, 소스는 `src/albion_analytics/`.
-- HTTP: `httpx`, 설정: `pydantic-settings`, 스키마: `pydantic` v2.
+- HTTP: `httpx`, 설정: `pydantic-settings`, 스키마: `pydantic` v2, DB: **psycopg** 3 (PostgreSQL).
 - 린트: `ruff`, 테스트: `pytest` + `pytest-asyncio`.
 
 ## 디렉터리
@@ -28,7 +34,8 @@
 | `src/albion_analytics/` | 라이브러리: API 클라이언트, 모델, 수집, 분석 |
 | `src/albion_analytics/api/` | Gameinfo HTTP 클라이언트(재시도·속도 제한) |
 | `src/albion_analytics/models/` | 킬 이벤트·장비 등 Pydantic 모델 |
-| `src/albion_analytics/ingestion/` | 플레이어/길드 등 소스별 fetch |
+| `src/albion_analytics/ingestion/` | 수집: 플레이어 킬, **전역 `/events` 폴링**(`event_feed`) 등 |
+| `src/albion_analytics/storage/` | Postgres 스키마·이벤트 upsert(중복 제거) |
 | `src/albion_analytics/analysis/` | 집계·티어 계산 등(초기에는 스텁) |
 | `scripts/` | 일회성·운영 스크립트(선택) |
 | `tests/` | 단위 테스트 |
@@ -44,6 +51,12 @@
 
 비공식 API이므로 호스트·경로 변경 가능성 있음 — 실패 시 커뮤니티/포럼 최신 정보 확인.
 
+### 킬 이벤트 JSON의 `Version` vs 게임 패치
+
+- 응답에는 **`TimeStamp`**, **`EventId`**, **`Version`(숫자, 예: 4)** 등이 있다.
+- **`Version`은 API 페이로드/스키마 버전**으로 보는 것이 맞고, **게임 패치 이름·번호와 동일하지 않다.**
+- **패치별 통계**는 **`kill_events.time_stamp` + `game_patches` 테이블**(패치별 `starts_at` / `ends_at`)으로 나눈다. 패치 출시 시 행을 추가하고, 수집 루프 끝에서 `assign_patches_from_ranges`가 `patch_id`를 채운다. 구간은 **겹치지 않게** 유지하는 것이 안전하다.
+
 ## 명령 (Windows PowerShell 예시)
 
 ```powershell
@@ -53,6 +66,12 @@ pip install -e ".[dev]"
 ruff check src tests
 pytest
 albion-fetch-sample "PlayerName"
+
+# Postgres (예: docker compose up -d 후)
+albion-init-db
+albion-collect-events --once
+# 지속 수집(기본 간격은 COLLECT_POLL_INTERVAL_SEC)
+albion-collect-events
 ```
 
 ## 코딩 규칙

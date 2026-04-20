@@ -1,47 +1,73 @@
 # Albion Analytics
 
-알비온 온라인 킬·데스 데이터를 수집·분석해 무기·장비 빌드 통계(티어, 순위 등)를 제공하는 프로젝트입니다.  
-현재 단계는 **데이터 수집·분석 파이프라인** 중심이며, 웹 프론트는 이후 단계에서 추가합니다.
+Albion Online Gameinfo API의 kill event를 수집해 PostgreSQL에 저장하고, 이후 장비/빌드
+단위 통계와 웹 랭킹 화면으로 확장하기 위한 프로젝트입니다.
 
-## 요구 사항
+현재 단계는 **Railway Postgres + 상시 worker 수집 MVP**입니다. 웹 프론트와 공개 API는
+아직 포함하지 않습니다.
+
+## Requirements
 
 - Python 3.11+
+- PostgreSQL
+- 로컬 개발용 Docker Compose 선택 사항
 
-## 설치
+## Install
 
-```bash
-cd c:\Dev\albion-analytics-cursor
+```powershell
+cd C:\Dev\albion-analytics-cursor
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 copy .env.example .env
 ```
 
-## 환경 변수
+## Local Usage
 
-`.env`에 `ALBION_GAMEINFO_BASE_URL` 등을 설정합니다. 지역(유럽/미국/아시아)별 Gameinfo 호스트는 [AGENTS.md](./AGENTS.md)를 참고하세요.
+Postgres를 띄우고 스키마를 만든 뒤 한 번 수집합니다.
 
-## 사용
-
-샘플로 플레이어 킬 이벤트를 가져와 콘솔에 요약합니다(플레이어 이름은 알비온 정확한 닉네임).
-
-```bash
-albion-fetch-sample "플레이어이름"
+```powershell
+docker compose up -d
+albion-init-db
+albion-collect-events --once --limit 10
 ```
 
-## 개발
+상시 수집:
 
-```bash
+```powershell
+albion-collect-events
+```
+
+플레이어 샘플 조회:
+
+```powershell
+albion-fetch-sample "PlayerName"
+```
+
+## Railway Deployment
+
+GitHub 연결과 Railway 배포 절차는 [docs/RAILWAY_DEPLOYMENT.md](docs/RAILWAY_DEPLOYMENT.md)를
+참고하세요.
+
+Railway 기본 실행은 다음과 같습니다.
+
+- `preDeployCommand`: `albion-init-db`
+- `startCommand`: `albion-collect-events`
+- DB: Railway PostgreSQL의 `DATABASE_URL`
+
+## Development
+
+```powershell
 ruff check src tests
-ruff format src tests
-pytest
+python -m pytest
 ```
 
-## API 참고
+## Project Notes
 
-알비온은 공개된 공식 REST 문서가 거의 없고, 웹/게임에서 쓰는 **Gameinfo** 엔드포인트를 커뮤니티가 활용합니다. 응답 스키마는 변경될 수 있으므로 `albion_analytics.models`의 Pydantic 모델은 실제 응답을 보며 조정하세요.
+- 운영 저장소는 PostgreSQL입니다.
+- 이벤트는 `(source_region, event_id)` 기준으로 중복 제거됩니다.
+- Gameinfo 장비 canonical key는 표시 이름이 아니라 API의 안정적인 `type` 문자열입니다.
+- API 페이로드의 `Version`은 게임 패치 번호가 아니라 payload/schema version으로 취급합니다.
+- 패치별 통계는 `kill_events.time_stamp`와 `game_patches` 구간으로 매핑합니다.
 
-## AI 에이전트
-
-- [AGENTS.md](./AGENTS.md): 아키텍처·명령·규칙(모든 도구 공통 기준).
-- [CLAUDE.md](./CLAUDE.md): Claude Code 등에서 `AGENTS.md`를 가리키는 짧은 진입점.
+자세한 프로젝트 방향과 에이전트 작업 규칙은 [AGENTS.md](AGENTS.md)를 참고하세요.

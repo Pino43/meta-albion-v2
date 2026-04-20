@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: albion
+      POSTGRES_PASSWORD: albion
+      POSTGRES_DB: albion
+    ports:
+      - "5432:5432"
+    volumes:
+      - albion_pg_data:/var/lib/postgresql/data
+
+volumes:
+  albion_pg_data:

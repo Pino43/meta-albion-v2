@@ -13,6 +13,20 @@ class Settings(BaseSettings):
     albion_gameinfo_base_url: str = "https://gameinfo.albiononline.com/api/gameinfo"
     albion_rate_limit_per_sec: float = 5.0
     albion_http_timeout_sec: float = 30.0
+    albion_http_max_retries: int = 3
+    albion_http_retry_base_delay_sec: float = 1.0
+
+    # postgresql://user:pass@host:5432/dbname - required for collection/storage.
+    database_url: str | None = None
+
+    # /events collection controls.
+    collect_events_limit: int = 1000
+    collect_max_pages: int = 10
+    collect_poll_interval_sec: float = 60.0
+    collect_error_backoff_sec: float = 30.0
+
+    # Comma-separated region keys: europe, americas, asia. Empty means all.
+    collect_regions: str = "europe,americas,asia"
 
 
 @lru_cache

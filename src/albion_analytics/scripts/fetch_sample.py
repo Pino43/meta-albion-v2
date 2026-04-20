@@ -13,8 +13,8 @@ from albion_analytics.ingestion import fetch_player_kill_events
 
 
 async def _run(name: str, max_events: int) -> int:
-    client = GameinfoClient()
-    pid, events = await fetch_player_kill_events(client, name, max_events=max_events)
+    async with GameinfoClient() as client:
+        pid, events = await fetch_player_kill_events(client, name, max_events=max_events)
     if not pid:
         print(f"Player not found: {name!r}", file=sys.stderr)
         return 1

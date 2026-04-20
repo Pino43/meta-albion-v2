@@ -13,10 +13,11 @@ class EquipmentSlot(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     type: str | None = Field(None, validation_alias=AliasChoices("Type", "type"))
-    count: int | None = None
-    quality: int | None = None
+    count: int | None = Field(None, validation_alias=AliasChoices("Count", "count"))
+    quality: int | None = Field(None, validation_alias=AliasChoices("Quality", "quality"))
     active_spells: list[Any] | None = None
     passive_spells: list[Any] | None = None
+    legendary_soul: Any | None = Field(None, alias="LegendarySoul")
 
 
 class Equipment(BaseModel):

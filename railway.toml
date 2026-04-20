@@ -1,0 +1,9 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "pip install -e ."
+
+[deploy]
+preDeployCommand = "albion-init-db"
+startCommand = "albion-collect-events"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
