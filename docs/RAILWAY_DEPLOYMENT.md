@@ -16,11 +16,10 @@ Railway 설정은 저장소 루트의 `railway.toml`에 들어 있습니다.
 
 ```toml
 [build]
-builder = "RAILPACK"
-buildCommand = "pip install ."
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "PYTHONPATH=/app/src python -m albion_analytics.scripts.collect_events"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 ```
@@ -132,7 +131,7 @@ INFO collection_round status=success fetched=... inserted=... skipped_invalid=..
 
 - `DATABASE_URL is not set`: 코드 서비스에 `DATABASE_URL=${{Postgres.DATABASE_URL}}`가 없습니다.
 - `could not translate host name` 또는 connection refused: Postgres 서비스가 준비 중이거나 변수 참조가 잘못됐습니다. 이 프로젝트는 기본 10회, 3초 간격으로 재시도합니다.
-- `No module named albion_analytics`: 최신 `railway.toml`이 배포되지 않았거나 Railway root directory가 저장소 루트가 아닙니다. 현재 설정은 `pip install .`와 `PYTHONPATH=/app/src`를 함께 사용합니다.
+- `No module named albion_analytics` 또는 `No module named psycopg`: 최신 `Dockerfile`/`railway.toml`이 배포되지 않았거나 Railway root directory가 저장소 루트가 아닙니다. 현재 설정은 Docker image 안에서 `pip install .`를 실행합니다.
 
 이전 버전처럼 Railway `preDeployCommand`에서 스키마를 만들지 않습니다. Railway 배포 단계의
 pre-deploy 실패를 피하기 위해 collector 시작 시 스키마를 적용합니다. 수동 초기화가 필요하면

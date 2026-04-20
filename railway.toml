@@ -1,8 +1,7 @@
 [build]
-builder = "RAILPACK"
-buildCommand = "pip install ."
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "PYTHONPATH=/app/src python -m albion_analytics.scripts.collect_events"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
