@@ -15,6 +15,7 @@ from albion_analytics.config import get_settings
 from albion_analytics.ingestion.event_feed import collect_events_round
 from albion_analytics.storage.db import connect_database
 from albion_analytics.storage.events_repo import finish_collector_run, start_collector_run
+from albion_analytics.storage.schema import apply_schema
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
 
     conn: psycopg.AsyncConnection | None = None
     exit_code = 0
+    schema_ready = False
 
     try:
         while not shutdown_event.is_set():
@@ -60,6 +62,12 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
             try:
                 if conn is None or conn.closed:
                     conn = await connect_database(s)
+                    schema_ready = False
+
+                if not schema_ready:
+                    logger.info("Applying database schema before collection")
+                    await apply_schema(conn)
+                    schema_ready = True
 
                 run_id = await start_collector_run(conn)
                 results, patch_n = await collect_events_round(

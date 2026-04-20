@@ -3,7 +3,6 @@ builder = "RAILPACK"
 buildCommand = "pip install -e ."
 
 [deploy]
-preDeployCommand = "python -m albion_analytics.scripts.init_db"
 startCommand = "python -m albion_analytics.scripts.collect_events"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

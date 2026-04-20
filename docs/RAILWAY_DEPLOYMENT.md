@@ -10,7 +10,7 @@ PostgreSQL + 상시 worker로 실행하는 절차입니다. 이번 배포 범위
 - GitHub: 이 저장소의 소스 코드 원격 저장소
 - Railway PostgreSQL: 운영 DB
 - Railway worker 서비스: `albion-collect-events`를 계속 실행하는 수집기
-- Railway pre-deploy: `albion-init-db`로 안전한 idempotent 스키마 적용
+- 수집기 시작 시 안전한 idempotent 스키마 자동 적용
 
 Railway 설정은 저장소 루트의 `railway.toml`에 들어 있습니다.
 
@@ -20,7 +20,6 @@ builder = "RAILPACK"
 buildCommand = "pip install -e ."
 
 [deploy]
-preDeployCommand = "python -m albion_analytics.scripts.init_db"
 startCommand = "python -m albion_analytics.scripts.collect_events"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
@@ -116,6 +115,7 @@ Railway의 PostgreSQL 서비스명이 `Postgres`가 아니라면 `DATABASE_URL` 
 배포 로그에서 아래 흐름을 확인합니다.
 
 ```text
+INFO Applying database schema before collection
 INFO Database schema applied (...)
 INFO collection_region region=europe cursor=... fetched=... inserted=... skipped_invalid=... duration_sec=...
 INFO collection_region region=americas cursor=... fetched=... inserted=... skipped_invalid=... duration_sec=...
@@ -127,12 +127,16 @@ INFO collection_round status=success fetched=... inserted=... skipped_invalid=..
 `COLLECT_ERROR_BACKOFF_SEC` 이후 재시도합니다. Railway 재배포나 중지 신호를 받으면 현재
 라운드 후 DB 연결을 닫고 종료합니다.
 
-Pre-deploy 단계에서 실패하면 Railway의 deploy log에서 `preDeployCommand` 출력을 먼저
-확인합니다. 자주 나는 원인은 다음입니다.
+배포가 실패하면 Railway의 deploy log에서 start command 출력을 먼저 확인합니다. 자주 나는
+원인은 다음입니다.
 
 - `DATABASE_URL is not set`: 코드 서비스에 `DATABASE_URL=${{Postgres.DATABASE_URL}}`가 없습니다.
 - `could not translate host name` 또는 connection refused: Postgres 서비스가 준비 중이거나 변수 참조가 잘못됐습니다. 이 프로젝트는 기본 10회, 3초 간격으로 재시도합니다.
 - `No module named albion_analytics`: build command가 `pip install -e .`로 실행되지 않았거나 Railway root directory가 저장소 루트가 아닙니다.
+
+이전 버전처럼 Railway `preDeployCommand`에서 스키마를 만들지 않습니다. Railway 배포 단계의
+pre-deploy 실패를 피하기 위해 collector 시작 시 스키마를 적용합니다. 수동 초기화가 필요하면
+Railway shell 또는 로컬에서 `python -m albion_analytics.scripts.init_db`를 실행할 수 있습니다.
 
 ## 7. DB 검증 SQL
 
