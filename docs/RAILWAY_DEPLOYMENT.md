@@ -100,7 +100,9 @@ COLLECT_EVENTS_LIMIT=51
 COLLECT_MAX_PAGES=10
 COLLECT_ERROR_BACKOFF_SEC=30
 COLLECT_NORMALIZE_AFTER_ROUND=true
+COLLECT_AGGREGATE_AFTER_ROUND=true
 NORMALIZE_BATCH_SIZE=1000
+AGGREGATE_LOOKBACK_DAYS=3
 ALBION_RATE_LIMIT_PER_SEC=5
 ALBION_HTTP_TIMEOUT_SEC=30
 ALBION_HTTP_MAX_RETRIES=3
@@ -122,6 +124,8 @@ INFO collection_region region=europe cursor=... fetched=... inserted=... skipped
 INFO collection_region region=americas cursor=... fetched=... inserted=... skipped_invalid=... duration_sec=...
 INFO collection_region region=asia cursor=... fetched=... inserted=... skipped_invalid=... duration_sec=...
 INFO collection_round status=success fetched=... inserted=... skipped_invalid=... patch_updated=... duration_sec=...
+INFO normalized_loadouts events=... rows=... upserted=... skipped_invalid_raw=...
+INFO daily_aggregates lookback_days=3 item_rows=... build_rows=...
 ```
 
 수집기가 일시적인 API 오류나 네트워크 오류를 만나면 종료하지 않고
@@ -155,7 +159,8 @@ FROM ingestion_cursors
 ORDER BY source_region;
 
 SELECT id, started_at, finished_at, status, total_fetched, total_inserted,
-       total_skipped_invalid, patch_rows_updated, normalized_loadouts, error_message
+       total_skipped_invalid, patch_rows_updated, normalized_loadouts,
+       aggregated_item_rows, aggregated_build_rows, error_message
 FROM collector_runs
 ORDER BY started_at DESC
 LIMIT 20;
@@ -170,6 +175,27 @@ FROM event_loadouts
 WHERE perspective = 'killer'
   AND main_hand_type IS NOT NULL
 GROUP BY main_hand_type
+ORDER BY uses DESC
+LIMIT 20;
+
+SELECT day, source_region, perspective, slot, count(*)
+FROM daily_item_usage
+GROUP BY day, source_region, perspective, slot
+ORDER BY day DESC
+LIMIT 20;
+
+SELECT day, source_region, perspective, count(*)
+FROM daily_build_usage
+GROUP BY day, source_region, perspective
+ORDER BY day DESC
+LIMIT 20;
+
+SELECT item_type, sum(uses) AS uses
+FROM daily_item_usage
+WHERE perspective = 'killer'
+  AND slot = 'main_hand'
+  AND day >= CURRENT_DATE - 7
+GROUP BY item_type
 ORDER BY uses DESC
 LIMIT 20;
 ```

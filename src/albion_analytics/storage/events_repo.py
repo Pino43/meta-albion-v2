@@ -102,6 +102,8 @@ async def finish_collector_run(
     total_skipped_invalid: int = 0,
     patch_rows_updated: int = 0,
     normalized_loadouts: int = 0,
+    aggregated_item_rows: int = 0,
+    aggregated_build_rows: int = 0,
     error_message: str | None = None,
 ) -> None:
     """Mark a collector run as finished."""
@@ -119,6 +121,8 @@ async def finish_collector_run(
               total_skipped_invalid = %s,
               patch_rows_updated = %s,
               normalized_loadouts = %s,
+              aggregated_item_rows = %s,
+              aggregated_build_rows = %s,
               error_message = %s
             WHERE id = %s
             """,
@@ -129,6 +133,8 @@ async def finish_collector_run(
                 total_skipped_invalid,
                 patch_rows_updated,
                 normalized_loadouts,
+                aggregated_item_rows,
+                aggregated_build_rows,
                 error_message,
                 run_id,
             ),

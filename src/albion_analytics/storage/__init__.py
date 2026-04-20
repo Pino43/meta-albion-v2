@@ -1,3 +1,8 @@
+from albion_analytics.storage.aggregates_repo import (
+    aggregate_daily_usage,
+    fetch_build_rankings,
+    fetch_item_rankings,
+)
 from albion_analytics.storage.db import connect_database
 from albion_analytics.storage.events_repo import (
     EventIngestionResult,
@@ -15,10 +20,13 @@ from albion_analytics.storage.schema import apply_schema
 
 __all__ = [
     "EventIngestionResult",
+    "aggregate_daily_usage",
     "apply_schema",
     "assign_patches_from_ranges",
     "connect_database",
     "count_pending_event_loadouts",
+    "fetch_build_rankings",
+    "fetch_item_rankings",
     "finish_collector_run",
     "normalize_pending_event_loadouts",
     "start_collector_run",

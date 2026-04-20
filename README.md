@@ -44,6 +44,9 @@ albion-collect-events
 albion-normalize-events --batch-size 1000
 albion-top-items --slot main_hand --perspective killer --region asia --days 1
 albion-top-builds --perspective killer --region asia --days 1
+albion-aggregate-daily --lookback-days 3
+albion-ranking-items --slot main_hand --days 7 --region asia --limit 20
+albion-ranking-builds --days 7 --region asia --limit 20
 ```
 
 플레이어 샘플 조회:

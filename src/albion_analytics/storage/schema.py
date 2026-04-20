@@ -132,6 +132,72 @@ DDL_STATEMENTS: list[str] = [
     ON event_loadout_normalization_status (normalized_at DESC)
     """,
     """
+    CREATE TABLE IF NOT EXISTS daily_item_usage (
+      day DATE NOT NULL,
+      source_region TEXT NOT NULL,
+      perspective TEXT NOT NULL,
+      slot TEXT NOT NULL,
+      item_type TEXT NOT NULL,
+      uses BIGINT NOT NULL,
+      events BIGINT NOT NULL,
+      avg_item_power DOUBLE PRECISION NULL,
+      avg_participants DOUBLE PRECISION NULL,
+      total_kill_fame BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (day, source_region, perspective, slot, item_type),
+      CONSTRAINT chk_daily_item_usage_perspective
+        CHECK (perspective IN ('killer', 'victim', 'participant')),
+      CONSTRAINT chk_daily_item_usage_slot
+        CHECK (
+          slot IN (
+            'main_hand',
+            'off_hand',
+            'head',
+            'armor',
+            'shoes',
+            'bag',
+            'cape',
+            'mount',
+            'potion',
+            'food'
+          )
+        )
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_daily_item_usage_rank
+    ON daily_item_usage (perspective, slot, day DESC, uses DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_daily_item_usage_region_rank
+    ON daily_item_usage (source_region, perspective, slot, day DESC, uses DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS daily_build_usage (
+      day DATE NOT NULL,
+      source_region TEXT NOT NULL,
+      perspective TEXT NOT NULL,
+      build_key TEXT NOT NULL,
+      uses BIGINT NOT NULL,
+      events BIGINT NOT NULL,
+      avg_item_power DOUBLE PRECISION NULL,
+      avg_participants DOUBLE PRECISION NULL,
+      total_kill_fame BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (day, source_region, perspective, build_key),
+      CONSTRAINT chk_daily_build_usage_perspective
+        CHECK (perspective IN ('killer', 'victim', 'participant'))
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_daily_build_usage_rank
+    ON daily_build_usage (perspective, day DESC, uses DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_daily_build_usage_region_rank
+    ON daily_build_usage (source_region, perspective, day DESC, uses DESC)
+    """,
+    """
     CREATE TABLE IF NOT EXISTS ingestion_cursors (
       source_region TEXT PRIMARY KEY,
       last_max_event_id BIGINT NULL,
@@ -162,6 +228,14 @@ DDL_STATEMENTS: list[str] = [
     """
     ALTER TABLE collector_runs
     ADD COLUMN IF NOT EXISTS normalized_loadouts INT NOT NULL DEFAULT 0
+    """,
+    """
+    ALTER TABLE collector_runs
+    ADD COLUMN IF NOT EXISTS aggregated_item_rows INT NOT NULL DEFAULT 0
+    """,
+    """
+    ALTER TABLE collector_runs
+    ADD COLUMN IF NOT EXISTS aggregated_build_rows INT NOT NULL DEFAULT 0
     """,
 ]
 

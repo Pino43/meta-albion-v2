@@ -27,7 +27,9 @@ class Settings(BaseSettings):
     collect_poll_interval_sec: float = 60.0
     collect_error_backoff_sec: float = 30.0
     collect_normalize_after_round: bool = True
+    collect_aggregate_after_round: bool = True
     normalize_batch_size: int = 1000
+    aggregate_lookback_days: int = 3
 
     # Comma-separated region keys: europe, americas, asia. Empty means all.
     collect_regions: str = "europe,americas,asia"

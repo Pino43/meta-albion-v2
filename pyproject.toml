@@ -29,6 +29,9 @@ albion-collect-events = "albion_analytics.scripts.collect_events:main"
 albion-normalize-events = "albion_analytics.scripts.normalize_events:main"
 albion-top-items = "albion_analytics.scripts.top_items:main"
 albion-top-builds = "albion_analytics.scripts.top_builds:main"
+albion-aggregate-daily = "albion_analytics.scripts.aggregate_daily:main"
+albion-ranking-items = "albion_analytics.scripts.ranking_items:main"
+albion-ranking-builds = "albion_analytics.scripts.ranking_builds:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/albion_analytics"]
