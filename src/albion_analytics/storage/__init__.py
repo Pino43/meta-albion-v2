@@ -16,6 +16,7 @@ from albion_analytics.storage.loadouts_repo import (
     normalize_pending_event_loadouts,
     upsert_event_loadouts,
 )
+from albion_analytics.storage.retention_repo import cleanup_retention
 from albion_analytics.storage.schema import apply_schema
 from albion_analytics.storage.status_repo import check_core_tables, fetch_api_status
 
@@ -25,6 +26,7 @@ __all__ = [
     "apply_schema",
     "assign_patches_from_ranges",
     "check_core_tables",
+    "cleanup_retention",
     "connect_database",
     "count_pending_event_loadouts",
     "fetch_api_status",

@@ -17,6 +17,7 @@ from albion_analytics.storage.aggregates_repo import aggregate_daily_usage
 from albion_analytics.storage.db import connect_database
 from albion_analytics.storage.events_repo import finish_collector_run, start_collector_run
 from albion_analytics.storage.loadouts_repo import normalize_pending_event_loadouts
+from albion_analytics.storage.retention_repo import cleanup_retention
 from albion_analytics.storage.schema import apply_schema
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,16 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
                     aggregated_build_rows,
                     time.monotonic() - started_at,
                 )
+                if s.collect_retention_after_round:
+                    try:
+                        await cleanup_retention(
+                            conn,
+                            raw_events_retention_days=s.raw_events_retention_days,
+                            daily_aggregate_retention_days=s.daily_aggregate_retention_days,
+                            collector_run_retention_days=s.collector_run_retention_days,
+                        )
+                    except Exception:
+                        logger.exception("retention_cleanup status=failed")
             except Exception as exc:
                 duration_sec = time.monotonic() - started_at
                 logger.exception(

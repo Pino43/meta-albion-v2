@@ -101,8 +101,12 @@ COLLECT_MAX_PAGES=10
 COLLECT_ERROR_BACKOFF_SEC=30
 COLLECT_NORMALIZE_AFTER_ROUND=true
 COLLECT_AGGREGATE_AFTER_ROUND=true
+COLLECT_RETENTION_AFTER_ROUND=true
 NORMALIZE_BATCH_SIZE=1000
 AGGREGATE_LOOKBACK_DAYS=3
+RAW_EVENTS_RETENTION_DAYS=10
+DAILY_AGGREGATE_RETENTION_DAYS=90
+COLLECTOR_RUN_RETENTION_DAYS=30
 ALBION_RATE_LIMIT_PER_SEC=5
 ALBION_HTTP_TIMEOUT_SEC=30
 ALBION_HTTP_MAX_RETRIES=3
@@ -127,6 +131,7 @@ INFO collection_region region=asia cursor=... fetched=... inserted=... skipped_i
 INFO collection_round status=success fetched=... inserted=... skipped_invalid=... patch_updated=... duration_sec=...
 INFO normalized_loadouts events=... rows=... upserted=... skipped_invalid_raw=...
 INFO daily_aggregates lookback_days=3 item_rows=... build_rows=...
+INFO retention_cleanup deleted_kill_events=... deleted_daily_item_rows=... deleted_daily_build_rows=... deleted_collector_runs=...
 ```
 
 수집기가 일시적인 API 오류나 네트워크 오류를 만나면 종료하지 않고
@@ -224,6 +229,7 @@ docker compose up -d
 copy .env.example .env
 albion-init-db
 albion-collect-events --once --limit 10
+albion-cleanup-retention --raw-events-days 10 --daily-aggregate-days 90 --collector-run-days 30
 ```
 
 로컬 Postgres에서도 7장의 SQL로 데이터 삽입을 확인할 수 있습니다.

@@ -35,6 +35,7 @@ albion-aggregate-daily = "albion_analytics.scripts.aggregate_daily:main"
 albion-ranking-items = "albion_analytics.scripts.ranking_items:main"
 albion-ranking-builds = "albion_analytics.scripts.ranking_builds:main"
 albion-serve-api = "albion_analytics.scripts.serve_api:main"
+albion-cleanup-retention = "albion_analytics.scripts.cleanup_retention:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/albion_analytics"]

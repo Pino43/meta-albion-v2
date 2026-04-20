@@ -47,6 +47,7 @@ albion-top-builds --perspective killer --region asia --days 1
 albion-aggregate-daily --lookback-days 3
 albion-ranking-items --slot main_hand --days 7 --region asia --limit 20
 albion-ranking-builds --days 7 --region asia --limit 20
+albion-cleanup-retention --raw-events-days 10 --daily-aggregate-days 90 --collector-run-days 30
 ```
 
 플레이어 샘플 조회:
