@@ -9,8 +9,11 @@ import psycopg
 CORE_STATUS_TABLES: tuple[str, ...] = (
     "kill_events",
     "event_loadouts",
+    "event_contexts",
     "daily_item_usage",
     "daily_build_usage",
+    "daily_item_outcomes",
+    "daily_build_outcomes",
 )
 
 
@@ -24,8 +27,11 @@ async def check_core_tables(conn: psycopg.AsyncConnection) -> list[str]:
               AND table_name IN (
                 'kill_events',
                 'event_loadouts',
+                'event_contexts',
                 'daily_item_usage',
-                'daily_build_usage'
+                'daily_build_usage',
+                'daily_item_outcomes',
+                'daily_build_outcomes'
               )
             """
         )
@@ -43,9 +49,15 @@ async def fetch_api_status(conn: psycopg.AsyncConnection) -> dict[str, Any]:
             UNION ALL
             SELECT 'event_loadouts', count(*) FROM event_loadouts
             UNION ALL
+            SELECT 'event_contexts', count(*) FROM event_contexts
+            UNION ALL
             SELECT 'daily_item_usage', count(*) FROM daily_item_usage
             UNION ALL
             SELECT 'daily_build_usage', count(*) FROM daily_build_usage
+            UNION ALL
+            SELECT 'daily_item_outcomes', count(*) FROM daily_item_outcomes
+            UNION ALL
+            SELECT 'daily_build_outcomes', count(*) FROM daily_build_outcomes
             """
         )
         count_rows = await cur.fetchall()
@@ -62,8 +74,11 @@ async def fetch_api_status(conn: psycopg.AsyncConnection) -> dict[str, Any]:
               total_skipped_invalid,
               patch_rows_updated,
               normalized_loadouts,
+              classified_contexts,
               aggregated_item_rows,
               aggregated_build_rows,
+              aggregated_outcome_item_rows,
+              aggregated_outcome_build_rows,
               error_message
             FROM collector_runs
             ORDER BY started_at DESC
@@ -84,9 +99,12 @@ async def fetch_api_status(conn: psycopg.AsyncConnection) -> dict[str, Any]:
             "total_skipped_invalid": run[6],
             "patch_rows_updated": run[7],
             "normalized_loadouts": run[8],
-            "aggregated_item_rows": run[9],
-            "aggregated_build_rows": run[10],
-            "error_message": run[11],
+            "classified_contexts": run[9],
+            "aggregated_item_rows": run[10],
+            "aggregated_build_rows": run[11],
+            "aggregated_outcome_item_rows": run[12],
+            "aggregated_outcome_build_rows": run[13],
+            "error_message": run[14],
         }
 
     return {

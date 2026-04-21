@@ -8,7 +8,11 @@ from typing import Any
 
 import psycopg
 
-from albion_analytics.analysis.loadouts import EventLoadout, extract_event_loadouts
+from albion_analytics.analysis.loadouts import (
+    LOADOUT_EXTRACTOR_VERSION,
+    EventLoadout,
+    extract_event_loadouts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,8 @@ def _loadout_params(row: EventLoadout) -> tuple[Any, ...]:
         row.participant_index,
         row.time_stamp,
         row.patch_id,
+        row.battle_id,
+        row.kill_area,
         row.player_id,
         row.player_name,
         row.guild_id,
@@ -45,6 +51,9 @@ def _loadout_params(row: EventLoadout) -> tuple[Any, ...]:
         row.total_victim_kill_fame,
         row.kill_fame,
         row.death_fame,
+        row.damage_done,
+        row.support_healing_done,
+        row.fame_ratio,
         row.build_key,
         row.slots["main_hand_type"],
         row.slots["off_hand_type"],
@@ -75,6 +84,8 @@ async def upsert_event_loadouts(
       participant_index,
       time_stamp,
       patch_id,
+      battle_id,
+      kill_area,
       player_id,
       player_name,
       guild_id,
@@ -87,6 +98,9 @@ async def upsert_event_loadouts(
       total_victim_kill_fame,
       kill_fame,
       death_fame,
+      damage_done,
+      support_healing_done,
+      fame_ratio,
       build_key,
       main_hand_type,
       off_hand_type,
@@ -102,11 +116,14 @@ async def upsert_event_loadouts(
     VALUES (
       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-      %s, %s, %s, %s, %s, %s, %s, %s, %s
+      %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+      %s, %s, %s, %s
     )
     ON CONFLICT (source_region, event_id, perspective, participant_index) DO UPDATE SET
       time_stamp = EXCLUDED.time_stamp,
       patch_id = EXCLUDED.patch_id,
+      battle_id = EXCLUDED.battle_id,
+      kill_area = EXCLUDED.kill_area,
       player_id = EXCLUDED.player_id,
       player_name = EXCLUDED.player_name,
       guild_id = EXCLUDED.guild_id,
@@ -119,6 +136,9 @@ async def upsert_event_loadouts(
       total_victim_kill_fame = EXCLUDED.total_victim_kill_fame,
       kill_fame = EXCLUDED.kill_fame,
       death_fame = EXCLUDED.death_fame,
+      damage_done = EXCLUDED.damage_done,
+      support_healing_done = EXCLUDED.support_healing_done,
+      fame_ratio = EXCLUDED.fame_ratio,
       build_key = EXCLUDED.build_key,
       main_hand_type = EXCLUDED.main_hand_type,
       off_hand_type = EXCLUDED.off_hand_type,
@@ -148,25 +168,34 @@ async def normalize_pending_event_loadouts(
             """
             SELECT ke.source_region, ke.event_id, ke.time_stamp, ke.patch_id, ke.raw_json
             FROM kill_events ke
-            WHERE NOT EXISTS (
-              SELECT 1
-              FROM event_loadout_normalization_status status
-              WHERE status.source_region = ke.source_region
-                AND status.event_id = ke.event_id
-            )
+            LEFT JOIN event_loadout_normalization_status status
+              ON status.source_region = ke.source_region
+             AND status.event_id = ke.event_id
+            WHERE status.event_id IS NULL
+               OR status.extractor_version < %s
             ORDER BY ke.time_stamp ASC
             LIMIT %s
             """,
-            (limit,),
+            (LOADOUT_EXTRACTOR_VERSION, limit),
         )
         events = await cur.fetchall()
 
     rows: list[EventLoadout] = []
-    statuses: list[tuple[str, int, int, str | None]] = []
+    event_keys: list[tuple[str, int]] = []
+    statuses: list[tuple[str, int, int, int, str | None]] = []
     for source_region, event_id, time_stamp, patch_id, raw_json in events:
+        event_keys.append((source_region, int(event_id)))
         raw_event = _raw_json_as_dict(raw_json)
         if raw_event is None:
-            statuses.append((source_region, int(event_id), 0, "invalid_raw_json"))
+            statuses.append(
+                (
+                    source_region,
+                    int(event_id),
+                    0,
+                    LOADOUT_EXTRACTOR_VERSION,
+                    "invalid_raw_json",
+                )
+            )
             continue
         event_rows = extract_event_loadouts(
             source_region=source_region,
@@ -176,8 +205,17 @@ async def normalize_pending_event_loadouts(
             raw_event=raw_event,
         )
         rows.extend(event_rows)
-        statuses.append((source_region, int(event_id), len(event_rows), None))
+        statuses.append(
+            (
+                source_region,
+                int(event_id),
+                len(event_rows),
+                LOADOUT_EXTRACTOR_VERSION,
+                None,
+            )
+        )
 
+    await delete_event_loadouts(conn, event_keys)
     upserted = await upsert_event_loadouts(conn, rows)
     await mark_event_loadouts_normalized(conn, statuses)
     logger.info(
@@ -185,14 +223,32 @@ async def normalize_pending_event_loadouts(
         len(events),
         len(rows),
         upserted,
-        sum(1 for _, _, row_count, reason in statuses if row_count == 0 and reason),
+        sum(1 for _, _, row_count, _, reason in statuses if row_count == 0 and reason),
     )
     return upserted
 
 
+async def delete_event_loadouts(
+    conn: psycopg.AsyncConnection,
+    event_keys: list[tuple[str, int]],
+) -> None:
+    if not event_keys:
+        return
+    async with conn.transaction():
+        async with conn.cursor() as cur:
+            await cur.executemany(
+                """
+                DELETE FROM event_loadouts
+                WHERE source_region = %s
+                  AND event_id = %s
+                """,
+                event_keys,
+            )
+
+
 async def mark_event_loadouts_normalized(
     conn: psycopg.AsyncConnection,
-    statuses: list[tuple[str, int, int, str | None]],
+    statuses: list[tuple[str, int, int, int, str | None]],
 ) -> None:
     if not statuses:
         return
@@ -205,12 +261,14 @@ async def mark_event_loadouts_normalized(
                   event_id,
                   normalized_at,
                   row_count,
+                  extractor_version,
                   skipped_reason
                 )
-                VALUES (%s, %s, NOW(), %s, %s)
+                VALUES (%s, %s, NOW(), %s, %s, %s)
                 ON CONFLICT (source_region, event_id) DO UPDATE SET
                   normalized_at = EXCLUDED.normalized_at,
                   row_count = EXCLUDED.row_count,
+                  extractor_version = EXCLUDED.extractor_version,
                   skipped_reason = EXCLUDED.skipped_reason
                 """,
                 statuses,
@@ -223,13 +281,13 @@ async def count_pending_event_loadouts(conn: psycopg.AsyncConnection) -> int:
             """
             SELECT count(*)
             FROM kill_events ke
-            WHERE NOT EXISTS (
-              SELECT 1
-              FROM event_loadout_normalization_status status
-              WHERE status.source_region = ke.source_region
-                AND status.event_id = ke.event_id
-            )
-            """
+            LEFT JOIN event_loadout_normalization_status status
+              ON status.source_region = ke.source_region
+             AND status.event_id = ke.event_id
+            WHERE status.event_id IS NULL
+               OR status.extractor_version < %s
+            """,
+            (LOADOUT_EXTRACTOR_VERSION,),
         )
         row = await cur.fetchone()
     return int(row[0]) if row else 0

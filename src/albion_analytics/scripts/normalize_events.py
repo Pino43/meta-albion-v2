@@ -10,6 +10,10 @@ import sys
 
 from albion_analytics.config import get_settings
 from albion_analytics.storage.db import connect_database
+from albion_analytics.storage.event_contexts_repo import (
+    classify_pending_event_contexts,
+    count_pending_event_contexts,
+)
 from albion_analytics.storage.loadouts_repo import (
     count_pending_event_loadouts,
     normalize_pending_event_loadouts,
@@ -27,20 +31,30 @@ async def _run(*, batch_size: int, max_batches: int) -> int:
 
     conn = await connect_database(s)
     total_normalized = 0
+    total_classified = 0
     batches = 0
     try:
         await apply_schema(conn)
         while batches < max_batches:
             pending_before = await count_pending_event_loadouts(conn)
-            if pending_before <= 0:
+            pending_contexts_before = await count_pending_event_contexts(conn)
+            if pending_before <= 0 and pending_contexts_before <= 0:
                 break
             normalized = await normalize_pending_event_loadouts(conn, limit=batch_size)
+            classified = await classify_pending_event_contexts(conn, limit=batch_size)
             total_normalized += normalized
+            total_classified += classified
             batches += 1
-            if normalized <= 0 and pending_before <= batch_size:
+            if (
+                normalized <= 0
+                and classified <= 0
+                and pending_before <= batch_size
+                and pending_contexts_before <= batch_size
+            ):
                 break
 
         pending_after = await count_pending_event_loadouts(conn)
+        pending_contexts_after = await count_pending_event_contexts(conn)
     finally:
         await conn.close()
 
@@ -49,7 +63,9 @@ async def _run(*, batch_size: int, max_batches: int) -> int:
             {
                 "batches": batches,
                 "normalized_loadouts": total_normalized,
+                "classified_contexts": total_classified,
                 "pending_events": pending_after,
+                "pending_contexts": pending_contexts_after,
             },
             ensure_ascii=False,
             indent=2,
@@ -60,7 +76,9 @@ async def _run(*, batch_size: int, max_batches: int) -> int:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    p = argparse.ArgumentParser(description="Normalize raw kill events into event_loadouts")
+    p = argparse.ArgumentParser(
+        description="Normalize raw kill events into event_loadouts and event_contexts"
+    )
     p.add_argument(
         "--batch-size",
         type=int,

@@ -44,6 +44,8 @@ DDL_STATEMENTS: list[str] = [
       participant_index INT NOT NULL DEFAULT 0,
       time_stamp TIMESTAMPTZ NOT NULL,
       patch_id INT NULL REFERENCES game_patches(id),
+      battle_id BIGINT NULL,
+      kill_area TEXT NULL,
       player_id TEXT NULL,
       player_name TEXT NULL,
       guild_id TEXT NULL,
@@ -56,6 +58,9 @@ DDL_STATEMENTS: list[str] = [
       total_victim_kill_fame BIGINT NULL,
       kill_fame BIGINT NULL,
       death_fame BIGINT NULL,
+      damage_done DOUBLE PRECISION NULL,
+      support_healing_done DOUBLE PRECISION NULL,
+      fame_ratio DOUBLE PRECISION NULL,
       build_key TEXT NULL,
       main_hand_type TEXT NULL,
       off_hand_type TEXT NULL,
@@ -94,6 +99,18 @@ DDL_STATEMENTS: list[str] = [
     ON event_loadouts (perspective, build_key)
     """,
     """
+    CREATE INDEX IF NOT EXISTS idx_event_loadouts_slot_time
+    ON event_loadouts (
+      main_hand_type,
+      head_type,
+      armor_type,
+      shoes_type,
+      off_hand_type,
+      cape_type,
+      time_stamp DESC
+    )
+    """,
+    """
     CREATE INDEX IF NOT EXISTS idx_event_loadouts_main_hand
     ON event_loadouts (perspective, main_hand_type)
     """,
@@ -119,6 +136,7 @@ DDL_STATEMENTS: list[str] = [
       event_id BIGINT NOT NULL,
       normalized_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       row_count INT NOT NULL DEFAULT 0,
+      extractor_version INT NOT NULL DEFAULT 1,
       skipped_reason TEXT NULL,
       PRIMARY KEY (source_region, event_id),
       CONSTRAINT fk_event_loadout_normalization_status_event
@@ -130,6 +148,57 @@ DDL_STATEMENTS: list[str] = [
     """
     CREATE INDEX IF NOT EXISTS idx_event_loadout_normalization_status_at
     ON event_loadout_normalization_status (normalized_at DESC)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS event_contexts (
+      source_region TEXT NOT NULL,
+      event_id BIGINT NOT NULL,
+      time_stamp TIMESTAMPTZ NOT NULL,
+      kill_area_raw TEXT NULL,
+      kill_area_slug TEXT NULL,
+      content_type TEXT NOT NULL,
+      fight_scale_bucket TEXT NOT NULL,
+      reported_participant_count INT NULL,
+      observed_kill_side_count INT NOT NULL,
+      classifier_version INT NOT NULL DEFAULT 1,
+      classified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (source_region, event_id),
+      CONSTRAINT fk_event_contexts_event
+        FOREIGN KEY (source_region, event_id)
+        REFERENCES kill_events (source_region, event_id)
+        ON DELETE CASCADE,
+      CONSTRAINT chk_event_contexts_content_type
+        CHECK (
+          content_type IN (
+            'corrupted_dungeon',
+            'mists',
+            'hellgate',
+            'roads',
+            'abyssal',
+            'unknown'
+          )
+        ),
+      CONSTRAINT chk_event_contexts_fight_scale
+        CHECK (
+          fight_scale_bucket IN (
+            'solo',
+            'duo',
+            'small_party',
+            'party',
+            'large_party',
+            'zvz',
+            'unknown'
+          )
+        )
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_event_contexts_area_time
+    ON event_contexts (kill_area_slug, time_stamp DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_event_contexts_filters
+    ON event_contexts (content_type, fight_scale_bucket, time_stamp DESC)
     """,
     """
     CREATE TABLE IF NOT EXISTS daily_item_usage (
@@ -198,6 +267,102 @@ DDL_STATEMENTS: list[str] = [
     ON daily_build_usage (source_region, perspective, day DESC, uses DESC)
     """,
     """
+    CREATE TABLE IF NOT EXISTS daily_item_outcomes (
+      day DATE NOT NULL,
+      source_region TEXT NOT NULL,
+      patch_id INT NOT NULL DEFAULT 0,
+      content_type TEXT NOT NULL,
+      fight_scale_bucket TEXT NOT NULL,
+      slot TEXT NOT NULL,
+      item_type TEXT NOT NULL,
+      kill_credit DOUBLE PRECISION NOT NULL DEFAULT 0,
+      death_count DOUBLE PRECISION NOT NULL DEFAULT 0,
+      appearance_count BIGINT NOT NULL DEFAULT 0,
+      event_count BIGINT NOT NULL DEFAULT 0,
+      avg_item_power DOUBLE PRECISION NULL,
+      total_kill_fame BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (
+        day,
+        source_region,
+        patch_id,
+        content_type,
+        fight_scale_bucket,
+        slot,
+        item_type
+      ),
+      CONSTRAINT chk_daily_item_outcomes_slot
+        CHECK (
+          slot IN (
+            'main_hand',
+            'off_hand',
+            'head',
+            'armor',
+            'shoes',
+            'bag',
+            'cape',
+            'mount',
+            'potion',
+            'food'
+          )
+        )
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_daily_item_outcomes_rank
+    ON daily_item_outcomes (slot, day DESC, kill_credit DESC, appearance_count DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_daily_item_outcomes_filters
+    ON daily_item_outcomes (
+      source_region,
+      patch_id,
+      content_type,
+      fight_scale_bucket,
+      slot,
+      day DESC
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS daily_build_outcomes (
+      day DATE NOT NULL,
+      source_region TEXT NOT NULL,
+      patch_id INT NOT NULL DEFAULT 0,
+      content_type TEXT NOT NULL,
+      fight_scale_bucket TEXT NOT NULL,
+      build_key TEXT NOT NULL,
+      kill_credit DOUBLE PRECISION NOT NULL DEFAULT 0,
+      death_count DOUBLE PRECISION NOT NULL DEFAULT 0,
+      appearance_count BIGINT NOT NULL DEFAULT 0,
+      event_count BIGINT NOT NULL DEFAULT 0,
+      avg_item_power DOUBLE PRECISION NULL,
+      total_kill_fame BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (
+        day,
+        source_region,
+        patch_id,
+        content_type,
+        fight_scale_bucket,
+        build_key
+      )
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_daily_build_outcomes_rank
+    ON daily_build_outcomes (day DESC, kill_credit DESC, appearance_count DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_daily_build_outcomes_filters
+    ON daily_build_outcomes (
+      source_region,
+      patch_id,
+      content_type,
+      fight_scale_bucket,
+      day DESC
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS ingestion_cursors (
       source_region TEXT PRIMARY KEY,
       last_max_event_id BIGINT NULL,
@@ -236,6 +401,42 @@ DDL_STATEMENTS: list[str] = [
     """
     ALTER TABLE collector_runs
     ADD COLUMN IF NOT EXISTS aggregated_build_rows INT NOT NULL DEFAULT 0
+    """,
+    """
+    ALTER TABLE event_loadouts
+    ADD COLUMN IF NOT EXISTS battle_id BIGINT NULL
+    """,
+    """
+    ALTER TABLE event_loadouts
+    ADD COLUMN IF NOT EXISTS kill_area TEXT NULL
+    """,
+    """
+    ALTER TABLE event_loadouts
+    ADD COLUMN IF NOT EXISTS damage_done DOUBLE PRECISION NULL
+    """,
+    """
+    ALTER TABLE event_loadouts
+    ADD COLUMN IF NOT EXISTS support_healing_done DOUBLE PRECISION NULL
+    """,
+    """
+    ALTER TABLE event_loadouts
+    ADD COLUMN IF NOT EXISTS fame_ratio DOUBLE PRECISION NULL
+    """,
+    """
+    ALTER TABLE event_loadout_normalization_status
+    ADD COLUMN IF NOT EXISTS extractor_version INT NOT NULL DEFAULT 1
+    """,
+    """
+    ALTER TABLE collector_runs
+    ADD COLUMN IF NOT EXISTS classified_contexts INT NOT NULL DEFAULT 0
+    """,
+    """
+    ALTER TABLE collector_runs
+    ADD COLUMN IF NOT EXISTS aggregated_outcome_item_rows INT NOT NULL DEFAULT 0
+    """,
+    """
+    ALTER TABLE collector_runs
+    ADD COLUMN IF NOT EXISTS aggregated_outcome_build_rows INT NOT NULL DEFAULT 0
     """,
 ]
 

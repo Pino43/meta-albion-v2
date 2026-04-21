@@ -20,6 +20,11 @@ class PlayerBrief(BaseModel):
     alliance_name: str | None = Field(None, alias="AllianceName")
     average_item_power: float | None = Field(None, alias="AverageItemPower")
     equipment: Equipment | None = Field(None, alias="Equipment")
+    kill_fame: int | None = Field(None, alias="KillFame")
+    death_fame: int | None = Field(None, alias="DeathFame")
+    damage_done: float | None = Field(None, alias="DamageDone")
+    support_healing_done: float | None = Field(None, alias="SupportHealingDone")
+    fame_ratio: float | None = Field(None, alias="FameRatio")
 
 
 class Participant(BaseModel):

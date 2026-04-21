@@ -19,6 +19,8 @@ class RetentionCleanupResult:
     deleted_kill_events: int
     deleted_daily_item_rows: int
     deleted_daily_build_rows: int
+    deleted_daily_item_outcome_rows: int
+    deleted_daily_build_outcome_rows: int
     deleted_collector_runs: int
 
 
@@ -81,6 +83,18 @@ async def cleanup_retention(
             deleted_daily_build_rows = cur.rowcount or 0
 
             await cur.execute(
+                "DELETE FROM daily_item_outcomes WHERE day < %s",
+                (daily_cutoff_day,),
+            )
+            deleted_daily_item_outcome_rows = cur.rowcount or 0
+
+            await cur.execute(
+                "DELETE FROM daily_build_outcomes WHERE day < %s",
+                (daily_cutoff_day,),
+            )
+            deleted_daily_build_outcome_rows = cur.rowcount or 0
+
+            await cur.execute(
                 "DELETE FROM collector_runs WHERE started_at < %s",
                 (collector_run_cutoff,),
             )
@@ -90,12 +104,15 @@ async def cleanup_retention(
         (
             "retention_cleanup deleted_kill_events=%s "
             "deleted_daily_item_rows=%s deleted_daily_build_rows=%s "
+            "deleted_daily_item_outcome_rows=%s deleted_daily_build_outcome_rows=%s "
             "deleted_collector_runs=%s raw_event_cutoff=%s "
             "daily_aggregate_cutoff_day=%s collector_run_cutoff=%s"
         ),
         deleted_kill_events,
         deleted_daily_item_rows,
         deleted_daily_build_rows,
+        deleted_daily_item_outcome_rows,
+        deleted_daily_build_outcome_rows,
         deleted_collector_runs,
         raw_event_cutoff.isoformat(),
         daily_cutoff_day.isoformat(),
@@ -108,5 +125,7 @@ async def cleanup_retention(
         deleted_kill_events=deleted_kill_events,
         deleted_daily_item_rows=deleted_daily_item_rows,
         deleted_daily_build_rows=deleted_daily_build_rows,
+        deleted_daily_item_outcome_rows=deleted_daily_item_outcome_rows,
+        deleted_daily_build_outcome_rows=deleted_daily_build_outcome_rows,
         deleted_collector_runs=deleted_collector_runs,
     )

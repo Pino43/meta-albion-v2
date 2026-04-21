@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
+LOADOUT_EXTRACTOR_VERSION = 2
+
 Perspective = Literal["killer", "victim", "participant"]
 
 SLOT_COLUMNS: dict[str, str] = {
@@ -39,6 +41,8 @@ class EventLoadout:
     participant_index: int
     time_stamp: datetime
     patch_id: int | None
+    battle_id: int | None
+    kill_area: str | None
     player_id: str | None
     player_name: str | None
     guild_id: str | None
@@ -51,6 +55,9 @@ class EventLoadout:
     total_victim_kill_fame: int | None
     kill_fame: int | None
     death_fame: int | None
+    damage_done: float | None
+    support_healing_done: float | None
+    fame_ratio: float | None
     build_key: str | None
     slots: dict[str, str | None]
 
@@ -127,6 +134,8 @@ def _loadout_from_actor(
         participant_index=participant_index,
         time_stamp=time_stamp,
         patch_id=patch_id,
+        battle_id=_as_int(raw_event.get("BattleId")),
+        kill_area=_as_str(raw_event.get("KillArea")),
         player_id=_as_str(actor.get("Id")),
         player_name=_as_str(actor.get("Name")),
         guild_id=_as_str(actor.get("GuildId")),
@@ -139,6 +148,9 @@ def _loadout_from_actor(
         total_victim_kill_fame=_as_int(raw_event.get("TotalVictimKillFame")),
         kill_fame=_as_int(actor.get("KillFame")),
         death_fame=_as_int(actor.get("DeathFame")),
+        damage_done=_as_float(actor.get("DamageDone")),
+        support_healing_done=_as_float(actor.get("SupportHealingDone")),
+        fame_ratio=_as_float(actor.get("FameRatio")),
         build_key=build_key_from_slots(slots),
         slots=slots,
     )

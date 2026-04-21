@@ -10,6 +10,10 @@ from albion_analytics.storage.aggregates_repo import (
     build_ranking_items_sql,
     utc_day_lower_bound,
 )
+from albion_analytics.storage.outcomes_repo import (
+    build_build_outcome_aggregate_sql,
+    build_item_outcome_aggregate_sql,
+)
 
 
 def test_item_aggregate_sql_uses_selected_slot_column() -> None:
@@ -27,6 +31,23 @@ def test_build_aggregate_sql_requires_build_key() -> None:
     assert "build_key <> ''" in sql
     assert "ON CONFLICT (day, source_region, perspective, build_key)" in sql
     assert "IS DISTINCT FROM" in sql
+
+
+def test_item_outcome_aggregate_sql_uses_event_contexts_and_shared_credit() -> None:
+    sql = build_item_outcome_aggregate_sql("main_hand")
+
+    assert "JOIN event_contexts" in sql
+    assert "1.0 / GREATEST(ec.observed_kill_side_count, 1)" in sql
+    assert "ON CONFLICT (" in sql
+    assert "daily_item_outcomes" in sql
+
+
+def test_build_outcome_aggregate_sql_requires_build_key_and_shared_credit() -> None:
+    sql = build_build_outcome_aggregate_sql()
+
+    assert "JOIN event_contexts" in sql
+    assert "el.build_key IS NOT NULL" in sql
+    assert "1.0 / GREATEST(ec.observed_kill_side_count, 1)" in sql
 
 
 def test_utc_day_lower_bound_includes_today_as_one_day() -> None:

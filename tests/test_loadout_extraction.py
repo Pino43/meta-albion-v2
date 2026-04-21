@@ -40,6 +40,8 @@ def test_build_key_from_slots_returns_none_when_core_slots_empty() -> None:
 
 def test_extract_event_loadouts_returns_killer_victim_and_participants() -> None:
     raw = {
+        "BattleId": 77,
+        "KillArea": "Mists-Prime",
         "NumberOfParticipants": 2,
         "GroupMemberCount": 1,
         "TotalVictimKillFame": 1234,
@@ -47,6 +49,9 @@ def test_extract_event_loadouts_returns_killer_victim_and_participants() -> None
             "Id": "killer-id",
             "Name": "Killer",
             "AverageItemPower": 1300.5,
+            "DamageDone": 321.5,
+            "SupportHealingDone": 99.0,
+            "FameRatio": 0.5,
             "Equipment": {
                 "MainHand": {"Type": "T8_MAIN_SWORD"},
                 "Head": {"Type": "T8_HEAD_PLATE_SET1"},
@@ -84,6 +89,11 @@ def test_extract_event_loadouts_returns_killer_victim_and_participants() -> None
 
     assert [row.perspective for row in rows] == ["killer", "victim", "participant"]
     assert rows[0].player_id == "killer-id"
+    assert rows[0].battle_id == 77
+    assert rows[0].kill_area == "Mists-Prime"
+    assert rows[0].damage_done == 321.5
+    assert rows[0].support_healing_done == 99.0
+    assert rows[0].fame_ratio == 0.5
     assert rows[0].slots["main_hand_type"] == "T8_MAIN_SWORD"
     assert rows[0].build_key == (
         "T8_HEAD_PLATE_SET1|T8_ARMOR_PLATE_SET1|"

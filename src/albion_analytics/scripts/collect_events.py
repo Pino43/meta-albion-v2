@@ -15,8 +15,10 @@ from albion_analytics.config import get_settings
 from albion_analytics.ingestion.event_feed import collect_events_round
 from albion_analytics.storage.aggregates_repo import aggregate_daily_usage
 from albion_analytics.storage.db import connect_database
+from albion_analytics.storage.event_contexts_repo import classify_pending_event_contexts
 from albion_analytics.storage.events_repo import finish_collector_run, start_collector_run
 from albion_analytics.storage.loadouts_repo import normalize_pending_event_loadouts
+from albion_analytics.storage.outcomes_repo import aggregate_daily_outcomes
 from albion_analytics.storage.retention_repo import cleanup_retention
 from albion_analytics.storage.schema import apply_schema
 
@@ -83,8 +85,16 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
                         conn,
                         limit=s.normalize_batch_size,
                     )
+                classified_contexts = 0
+                if s.collect_normalize_after_round:
+                    classified_contexts = await classify_pending_event_contexts(
+                        conn,
+                        limit=s.normalize_batch_size,
+                    )
                 aggregated_item_rows = 0
                 aggregated_build_rows = 0
+                aggregated_outcome_item_rows = 0
+                aggregated_outcome_build_rows = 0
                 if s.collect_aggregate_after_round:
                     aggregate_result = await aggregate_daily_usage(
                         conn,
@@ -92,6 +102,12 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
                     )
                     aggregated_item_rows = aggregate_result.item_rows
                     aggregated_build_rows = aggregate_result.build_rows
+                    outcome_result = await aggregate_daily_outcomes(
+                        conn,
+                        lookback_days=s.aggregate_lookback_days,
+                    )
+                    aggregated_outcome_item_rows = outcome_result.item_rows
+                    aggregated_outcome_build_rows = outcome_result.build_rows
                 totals = {
                     "total_fetched": sum(r.fetched for r in results),
                     "total_inserted": sum(r.inserted for r in results),
@@ -103,15 +119,20 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
                     status="success",
                     patch_rows_updated=patch_n,
                     normalized_loadouts=normalized_loadouts,
+                    classified_contexts=classified_contexts,
                     aggregated_item_rows=aggregated_item_rows,
                     aggregated_build_rows=aggregated_build_rows,
+                    aggregated_outcome_item_rows=aggregated_outcome_item_rows,
+                    aggregated_outcome_build_rows=aggregated_outcome_build_rows,
                     **totals,
                 )
                 logger.info(
                     (
                         "collection_round status=success fetched=%s inserted=%s "
                         "skipped_invalid=%s patch_updated=%s normalized_loadouts=%s "
+                        "classified_contexts=%s "
                         "aggregated_item_rows=%s aggregated_build_rows=%s "
+                        "aggregated_outcome_item_rows=%s aggregated_outcome_build_rows=%s "
                         "duration_sec=%.3f"
                     ),
                     totals["total_fetched"],
@@ -119,8 +140,11 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
                     totals["total_skipped_invalid"],
                     patch_n,
                     normalized_loadouts,
+                    classified_contexts,
                     aggregated_item_rows,
                     aggregated_build_rows,
+                    aggregated_outcome_item_rows,
+                    aggregated_outcome_build_rows,
                     time.monotonic() - started_at,
                 )
                 if s.collect_retention_after_round:

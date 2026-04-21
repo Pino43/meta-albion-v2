@@ -17,11 +17,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from psycopg_pool import AsyncConnectionPool
 
+from albion_analytics.analysis.event_contexts import normalize_kill_area_slug
 from albion_analytics.config import Settings, get_settings
 from albion_analytics.storage.aggregates_repo import (
     SLOT_TO_COLUMN,
     fetch_build_rankings,
     fetch_item_rankings,
+)
+from albion_analytics.storage.outcomes_repo import (
+    fetch_build_detail,
+    fetch_item_detail,
+    fetch_main_hand_leaderboard,
 )
 from albion_analytics.storage.status_repo import (
     CORE_STATUS_TABLES,
@@ -31,6 +37,8 @@ from albion_analytics.storage.status_repo import (
 
 Perspective = Literal["killer", "victim", "participant"]
 Region = Literal["europe", "americas", "asia"]
+ContentType = Literal["corrupted_dungeon", "mists", "hellgate", "roads", "abyssal", "unknown"]
+FightScale = Literal["solo", "duo", "small_party", "party", "large_party", "zvz", "unknown"]
 Connector = Callable[[Settings], Awaitable[psycopg.AsyncConnection]]
 
 
@@ -229,6 +237,9 @@ def create_app(
     app.state.fetch_api_status = fetch_api_status
     app.state.fetch_item_rankings = fetch_item_rankings
     app.state.fetch_build_rankings = fetch_build_rankings
+    app.state.fetch_main_hand_leaderboard = fetch_main_hand_leaderboard
+    app.state.fetch_item_detail = fetch_item_detail
+    app.state.fetch_build_detail = fetch_build_detail
 
     @app.middleware("http")
     async def rate_limit(request: Request, call_next: Callable[[Request], Awaitable[Any]]) -> Any:
@@ -338,6 +349,179 @@ def create_app(
                 region=region,
                 perspective=perspective,
                 limit=limit,
+            ),
+        }
+
+    @app.get("/v1/leaderboards/main-hands")
+    async def main_hand_leaderboard(
+        request: Request,
+        days: Annotated[int, Query(ge=1, le=90)] = 14,
+        region: Region | None = None,
+        patch_id: Annotated[int | None, Query(ge=0)] = None,
+        content_type: ContentType | None = None,
+        fight_scale: FightScale | None = None,
+        kill_area: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+        min_sample: Annotated[int, Query(ge=0, le=10000)] = 25,
+    ) -> dict[str, Any]:
+        normalized_kill_area = normalize_kill_area_slug(kill_area) if kill_area else None
+
+        async def load_rows() -> list[dict[str, Any]]:
+            async with _db_connection(request) as conn:
+                return await request.app.state.fetch_main_hand_leaderboard(
+                    conn,
+                    days=days,
+                    region=region,
+                    patch_id=patch_id,
+                    content_type=content_type,
+                    fight_scale=fight_scale,
+                    kill_area=normalized_kill_area,
+                    limit=limit,
+                    min_sample=min_sample,
+                )
+
+        rows = await request.app.state.cache.get_or_set(
+            (
+                "leaderboard",
+                "main_hands",
+                days,
+                region,
+                patch_id,
+                content_type,
+                fight_scale,
+                normalized_kill_area,
+                limit,
+                min_sample,
+            ),
+            load_rows,
+        )
+        return {
+            "data": rows,
+            "meta": _ranking_meta(
+                settings=request.app.state.settings,
+                days=days,
+                region=region,
+                patch_id=patch_id,
+                content_type=content_type,
+                fight_scale=fight_scale,
+                kill_area=normalized_kill_area,
+                limit=limit,
+                min_sample=min_sample,
+            ),
+        }
+
+    @app.get("/v1/items/{slot}/{item_type}")
+    async def item_detail(
+        request: Request,
+        slot: str,
+        item_type: str,
+        days: Annotated[int, Query(ge=1, le=90)] = 14,
+        region: Region | None = None,
+        patch_id: Annotated[int | None, Query(ge=0)] = None,
+        content_type: ContentType | None = None,
+        fight_scale: FightScale | None = None,
+        kill_area: str | None = None,
+    ) -> dict[str, Any]:
+        slot = _validate_slot(slot)
+        normalized_kill_area = normalize_kill_area_slug(kill_area) if kill_area else None
+
+        async def load_item() -> dict[str, Any] | None:
+            async with _db_connection(request) as conn:
+                return await request.app.state.fetch_item_detail(
+                    conn,
+                    slot=slot,
+                    item_type=item_type,
+                    days=days,
+                    region=region,
+                    patch_id=patch_id,
+                    content_type=content_type,
+                    fight_scale=fight_scale,
+                    kill_area=normalized_kill_area,
+                )
+
+        data = await request.app.state.cache.get_or_set(
+            (
+                "item_detail",
+                slot,
+                item_type,
+                days,
+                region,
+                patch_id,
+                content_type,
+                fight_scale,
+                normalized_kill_area,
+            ),
+            load_item,
+        )
+        if data is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        return {
+            "data": data,
+            "meta": _ranking_meta(
+                settings=request.app.state.settings,
+                slot=slot,
+                item_type=item_type,
+                days=days,
+                region=region,
+                patch_id=patch_id,
+                content_type=content_type,
+                fight_scale=fight_scale,
+                kill_area=normalized_kill_area,
+            ),
+        }
+
+    @app.get("/v1/builds/{build_key}")
+    async def build_detail(
+        request: Request,
+        build_key: str,
+        days: Annotated[int, Query(ge=1, le=90)] = 14,
+        region: Region | None = None,
+        patch_id: Annotated[int | None, Query(ge=0)] = None,
+        content_type: ContentType | None = None,
+        fight_scale: FightScale | None = None,
+        kill_area: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_kill_area = normalize_kill_area_slug(kill_area) if kill_area else None
+
+        async def load_build() -> dict[str, Any] | None:
+            async with _db_connection(request) as conn:
+                return await request.app.state.fetch_build_detail(
+                    conn,
+                    build_key=build_key,
+                    days=days,
+                    region=region,
+                    patch_id=patch_id,
+                    content_type=content_type,
+                    fight_scale=fight_scale,
+                    kill_area=normalized_kill_area,
+                )
+
+        data = await request.app.state.cache.get_or_set(
+            (
+                "build_detail",
+                build_key,
+                days,
+                region,
+                patch_id,
+                content_type,
+                fight_scale,
+                normalized_kill_area,
+            ),
+            load_build,
+        )
+        if data is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        return {
+            "data": data,
+            "meta": _ranking_meta(
+                settings=request.app.state.settings,
+                build_key=build_key,
+                days=days,
+                region=region,
+                patch_id=patch_id,
+                content_type=content_type,
+                fight_scale=fight_scale,
+                kill_area=normalized_kill_area,
             ),
         }
 
