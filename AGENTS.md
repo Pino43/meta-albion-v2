@@ -81,6 +81,31 @@ albion-collect-events
 - 새 기능은 **테스트 또는 스크립트로 재현 가능**하게 유지.
 - 사용자 규칙: 불필요한 대규모 리팩터·무관 파일 수정 금지.
 
+## Railway read-only access for tests/debugging
+
+- Railway 운영 DB를 자동 테스트, 디버깅, 데이터 분포 확인에 연결할 때는 운영 쓰기 계정 `DATABASE_URL`을 직접 사용하지 않는다.
+- 가능하면 Railway Postgres에 **read-only 전용 계정**을 따로 만들고, 로컬 또는 CI에서는 그 계정의 연결 문자열만 사용한다.
+- 권장 환경 변수 이름: `RAILWAY_READONLY_DATABASE_URL`
+- read-only 계정은 최소 권한 원칙을 따른다.
+  - `CONNECT` on database
+  - `USAGE` on schema `public`
+  - `SELECT` on existing tables
+  - `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES`
+  - `ALTER ROLE ... SET default_transaction_read_only = on`
+- 에이전트가 Railway에 연결할 때는, 특별한 요청이 없는 한 **조회 전용 SQL과 read-only 연결만** 사용한다.
+
+## Gameinfo `/events` quirks discovered in production
+
+- 현재 확인된 운영 데이터와 라이브 샘플 기준으로, Gameinfo `/events`의 공간 정보는 매우 거칠 수 있다.
+  - `KillArea`가 `OPEN_WORLD`로 대량 유입될 수 있다.
+  - `Location`은 `null`일 수 있다.
+  - 따라서 현재 파이프라인에서는 정확한 개별 존 이름보다 **콘텐츠 대분류** 중심 분류를 우선한다.
+- `KillArea=OPEN_WORLD`는 `unknown`으로 버리지 말고 `open_world` content type으로 분류한다.
+- 실제 API 샘플에서 `Participants` 배열에 `Killer` 본인이 포함될 수 있었다.
+  - kill-side 인원수 계산 시 killer를 한 번 더 더하지 않는다.
+  - loadout normalization에서도 killer를 `participant`로 중복 저장하지 않는다.
+- Gameinfo 응답 구조가 달라진 정황이 있으면 샘플 이벤트를 다시 확인하고 extractor/classifier version을 올려 backfill 가능하게 유지한다.
+
 ## 웹 프론트
 
 아직 포함하지 않음. 추가 시 `apps/web` 또는 별도 저장소로 두고, 이 패키지는 **집계 결과(DB/API)** 를 제공하는 쪽으로 연결하면 됨.
