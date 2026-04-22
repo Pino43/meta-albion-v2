@@ -8,15 +8,14 @@ describe('buildLeaderboardQuery', () => {
       days: 14,
       region: 'asia',
       patchId: 3,
-      contentType: 'mists',
+      contentType: 'open_world',
       fightScale: 'duo',
-      killArea: 'Mist Prime',
       limit: 20,
       minSample: 25
     });
 
     expect(query.toString()).toBe(
-      'days=14&region=asia&patch_id=3&content_type=mists&fight_scale=duo&kill_area=Mist+Prime&limit=20&min_sample=25'
+      'days=14&region=asia&patch_id=3&content_type=open_world&fight_scale=duo&limit=20&min_sample=25'
     );
   });
 
@@ -27,7 +26,6 @@ describe('buildLeaderboardQuery', () => {
       patchId: null,
       contentType: 'all',
       fightScale: 'all',
-      killArea: '   ',
       limit: 10,
       minSample: 0
     });
@@ -43,12 +41,11 @@ describe('buildDetailQuery', () => {
       region: 'europe',
       patchId: null,
       contentType: 'roads',
-      fightScale: 'small_party',
-      killArea: 'Avalon Path'
+      fightScale: 'small_party'
     });
 
     expect(query.toString()).toBe(
-      'days=30&region=europe&content_type=roads&fight_scale=small_party&kill_area=Avalon+Path'
+      'days=30&region=europe&content_type=roads&fight_scale=small_party'
     );
   });
 });

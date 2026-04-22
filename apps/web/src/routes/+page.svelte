@@ -31,7 +31,6 @@
     patchIdInput: string;
     contentType: ContentTypeFilter;
     fightScale: FightScaleFilter;
-    killArea: string;
     limit: number;
     minSample: number;
   };
@@ -42,9 +41,9 @@
     label: string;
   };
 
-  const dayOptions = [7, 14, 30, 60];
-  const limitOptions = [10, 20, 50, 100];
-  const minSampleOptions = [0, 25, 100, 250];
+  const dayOptions = [1, 7, 14, 30] as const;
+  const limitOptions = [10, 20, 50, 100] as const;
+  const minSampleOptions = [0, 25, 100, 250] as const;
   const buildSlotOrder: Array<[keyof BuildComponents, string]> = [
     ['head_type', 'Head'],
     ['armor_type', 'Armor'],
@@ -67,9 +66,6 @@
   let buildState: LoadState = 'idle';
   let apiStatus: LoadState = 'loading';
   let lastUpdated: string | null = null;
-  let leaderboardError = '';
-  let itemError = '';
-  let buildError = '';
   let leaderboardRequestId = 0;
   let itemRequestId = 0;
   let buildRequestId = 0;
@@ -107,7 +103,14 @@
     selectedItemType === null
       ? null
       : leaderboardRows.find((row) => row.item_type === selectedItemType) ?? null;
-  $: representativeBuild = itemDetail?.builds.representative_build ?? null;
+  $: selectedItemParsed = selectedItemType ? parseItemType(selectedItemType) : null;
+  $: topAdjustedRow = leaderboardRows[0] ?? null;
+  $: topPickRow =
+    [...leaderboardRows].sort(
+      (left, right) => (right.pick_rate ?? 0) - (left.pick_rate ?? 0)
+    )[0] ?? null;
+  $: totalSample = leaderboardRows.reduce((sum, row) => sum + row.sample, 0);
+  $: buildComponentViews = buildDetail ? buildComponents(buildDetail.components) : [];
 
   onMount(() => {
     const params = new URLSearchParams(window.location.search);
@@ -121,12 +124,11 @@
 
   function defaultFilters(): LeaderboardFilters {
     return {
-      days: 14,
+      days: 7,
       region: 'all',
       patchId: null,
       contentType: 'all',
       fightScale: 'all',
-      killArea: '',
       limit: 20,
       minSample: 25
     };
@@ -139,7 +141,6 @@
       patchIdInput: value.patchId === null ? '' : String(value.patchId),
       contentType: value.contentType,
       fightScale: value.fightScale,
-      killArea: value.killArea,
       limit: value.limit,
       minSample: value.minSample
     };
@@ -176,7 +177,6 @@
       patchId: parsePatchId(params.get('patch_id') ?? ''),
       contentType: parseChoice(params.get('content_type'), contentTypes, fallback.contentType),
       fightScale: parseChoice(params.get('fight_scale'), fightScales, fallback.fightScale),
-      killArea: params.get('kill_area')?.trim() ?? '',
       limit: parseNumberChoice(params.get('limit'), limitOptions, fallback.limit),
       minSample: parseNumberChoice(params.get('min_sample'), minSampleOptions, fallback.minSample)
     };
@@ -188,8 +188,7 @@
       region: value.region,
       patchId: value.patchId,
       contentType: value.contentType,
-      fightScale: value.fightScale,
-      killArea: value.killArea
+      fightScale: value.fightScale
     };
   }
 
@@ -200,7 +199,6 @@
       patchId: parsePatchId(draft.patchIdInput),
       contentType: draft.contentType,
       fightScale: draft.fightScale,
-      killArea: draft.killArea.trim(),
       limit: draft.limit,
       minSample: draft.minSample
     };
@@ -219,7 +217,6 @@
     if (filters.patchId !== null) params.set('patch_id', String(filters.patchId));
     if (filters.contentType !== 'all') params.set('content_type', filters.contentType);
     if (filters.fightScale !== 'all') params.set('fight_scale', filters.fightScale);
-    if (filters.killArea) params.set('kill_area', filters.killArea);
     if (filters.limit !== defaultFilters().limit) params.set('limit', String(filters.limit));
     if (filters.minSample !== defaultFilters().minSample) {
       params.set('min_sample', String(filters.minSample));
@@ -233,7 +230,6 @@
     const requestId = ++leaderboardRequestId;
     leaderboardState = 'loading';
     apiStatus = 'loading';
-    leaderboardError = '';
 
     try {
       const result = await fetchLeaderboard(filters);
@@ -250,7 +246,7 @@
       if (selectedItemType === null) {
         selectedBuildKey = null;
       }
-    } catch (error) {
+    } catch {
       if (requestId !== leaderboardRequestId) return;
 
       leaderboardRows = [];
@@ -260,7 +256,6 @@
       buildDetail = null;
       leaderboardState = 'error';
       apiStatus = 'error';
-      leaderboardError = error instanceof Error ? error.message : 'Leaderboard could not be loaded.';
     }
   }
 
@@ -269,7 +264,6 @@
 
     const requestId = ++itemRequestId;
     itemState = 'loading';
-    itemError = '';
 
     try {
       const result = await fetchItemDetail('main_hand', selectedItemType, detailFiltersFrom(filters));
@@ -282,13 +276,12 @@
       if (!selectedBuildKey || !candidateKeys.includes(selectedBuildKey)) {
         selectedBuildKey = itemDetail.builds.representative_build?.build_key ?? null;
       }
-    } catch (error) {
+    } catch {
       if (requestId !== itemRequestId) return;
 
       itemDetail = null;
       selectedBuildKey = null;
       itemState = 'error';
-      itemError = error instanceof Error ? error.message : 'Item detail could not be loaded.';
     }
   }
 
@@ -297,7 +290,6 @@
 
     const requestId = ++buildRequestId;
     buildState = 'loading';
-    buildError = '';
 
     try {
       const result = await fetchBuildDetail(selectedBuildKey, detailFiltersFrom(filters));
@@ -305,12 +297,11 @@
 
       buildDetail = result.data;
       buildState = 'ready';
-    } catch (error) {
+    } catch {
       if (requestId !== buildRequestId) return;
 
       buildDetail = null;
       buildState = 'error';
-      buildError = error instanceof Error ? error.message : 'Build detail could not be loaded.';
     }
   }
 
@@ -324,20 +315,37 @@
     selectedBuildKey = buildKey;
   }
 
+  function selectTableRow(event: KeyboardEvent, itemType: string) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      selectItem(itemType);
+    }
+  }
+
   function summarizeFilters(value: LeaderboardFilters): string {
     const labels = [
-      `${value.days}d`,
-      humanize(value.region, 'All regions'),
-      humanize(value.contentType, 'All content'),
-      humanize(value.fightScale, 'All scales')
+      `${value.days}d window`,
+      regionLabel(value.region),
+      contentTypeLabel(value.contentType),
+      fightScaleLabel(value.fightScale)
     ];
     if (value.patchId !== null) labels.push(`Patch ${value.patchId}`);
-    if (value.killArea) labels.push(value.killArea);
     return labels.join(' / ');
   }
 
-  function humanize(value: string, fallback: string): string {
-    if (value === 'all') return fallback;
+  function regionLabel(value: Region): string {
+    if (value === 'all') return 'All regions';
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
+  function contentTypeLabel(value: ContentTypeFilter): string {
+    if (value === 'all') return 'All content';
+    if (value === 'open_world') return 'Open world';
+    return value.replaceAll('_', ' ');
+  }
+
+  function fightScaleLabel(value: FightScaleFilter): string {
+    if (value === 'all') return 'All scales';
     return value.replaceAll('_', ' ');
   }
 
@@ -361,9 +369,15 @@
 
   function formatCompact(value: number | null | undefined): string {
     if (value === null || value === undefined) return '-';
-    return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(
-      value
-    );
+    return new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: 1
+    }).format(value);
+  }
+
+  function formatTimestamp(value: string | null): string {
+    if (!value) return 'Not yet updated';
+    return new Date(value).toLocaleString();
   }
 
   function confidenceTone(value: Confidence): string {
@@ -372,21 +386,21 @@
 
   function metricsFor(summary: MainHandLeaderboardRow | ItemDetail['summary'] | BuildDetail['summary']) {
     return [
-      { label: 'Adjusted', value: formatSignedPercent(summary.adjusted_score) },
-      { label: 'Kill-side', value: formatPercent(summary.kill_side_rate) },
-      { label: 'K/D', value: formatDecimal(summary.kd_ratio) },
-      { label: 'Sample', value: formatDecimal(summary.sample, 0) },
-      { label: 'Pick rate', value: formatPercent(summary.pick_rate) },
-      { label: 'Avg IP', value: formatDecimal(summary.avg_item_power, 0) }
+      { label: 'Adjusted', value: formatSignedPercent(summary.adjusted_score), tone: summary.adjusted_score >= 0 },
+      { label: 'Kill-side', value: formatPercent(summary.kill_side_rate), tone: false },
+      { label: 'K/D', value: formatDecimal(summary.kd_ratio), tone: false },
+      { label: 'Sample', value: formatDecimal(summary.sample, 0), tone: false },
+      { label: 'Pick rate', value: formatPercent(summary.pick_rate), tone: false },
+      { label: 'Avg IP', value: formatDecimal(summary.avg_item_power, 0), tone: false }
     ];
   }
 
   function distributionLabel(row: DistributionRow, kind: 'content' | 'scale' | 'patch'): string {
     if (kind === 'content') {
-      return humanize(row.content_type ?? 'unknown', 'Unknown');
+      return contentTypeLabel((row.content_type as ContentTypeFilter | undefined) ?? 'unknown');
     }
     if (kind === 'scale') {
-      return humanize(row.fight_scale ?? 'unknown', 'Unknown');
+      return fightScaleLabel((row.fight_scale as FightScaleFilter | undefined) ?? 'unknown');
     }
     if (row.patch_id === null || row.patch_id === undefined) {
       return 'Unpatched';
@@ -396,6 +410,11 @@
 
   function itemLabel(itemType: string): string {
     return parseItemType(itemType).label;
+  }
+
+  function tierBadge(itemType: string): string {
+    const parsed = parseItemType(itemType);
+    return `${parsed.tier}${parsed.enchantment}`;
   }
 
   function buildComponents(components: BuildComponents): ComponentView[] {
@@ -413,226 +432,256 @@
   <title>Albion Analytics Meta Lab</title>
   <meta
     name="description"
-    content="Test the Albion Analytics main-hand leaderboard with item and build detail lookups."
+    content="Read Albion Online main-hand rankings with a table-first meta dashboard."
   />
 </svelte:head>
 
-<main class="app-shell">
-  <section class="control-band">
-    <div class="brand-block">
-      <div class="brand-mark">AA</div>
-      <div class="brand-copy">
-        <p>Albion Analytics</p>
-        <h1>Meta Lab</h1>
-        <span>{filterSummary}</span>
+<main class="page">
+  <section class="hero-band">
+    <div class="hero-copy">
+      <p class="eyebrow">Albion Analytics</p>
+      <h1>Main-hand meta at a glance</h1>
+      <p class="hero-text">
+        A cleaner, table-first ranking view for current weapon performance, confidence, and build
+        context.
+      </p>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span>Top adjusted</span>
+          <strong>{topAdjustedRow ? itemLabel(topAdjustedRow.item_type) : 'Waiting for data'}</strong>
+        </div>
+        <div class="hero-stat">
+          <span>Highest pick rate</span>
+          <strong>{topPickRow ? itemLabel(topPickRow.item_type) : 'Waiting for data'}</strong>
+        </div>
+        <div class="hero-stat">
+          <span>Rows in slice</span>
+          <strong>{leaderboardRows.length}</strong>
+        </div>
+        <div class="hero-stat">
+          <span>Total sample</span>
+          <strong>{formatCompact(totalSample)}</strong>
+        </div>
       </div>
     </div>
 
-    <form class="filter-grid" on:submit|preventDefault={applyFilters}>
-      <label>
-        Days
-        <select bind:value={draft.days}>
-          {#each dayOptions as option}
-            <option value={option}>{option}</option>
-          {/each}
-        </select>
-      </label>
+    <form class="filter-panel" on:submit|preventDefault={applyFilters}>
+      <div class="filter-row">
+        <label>
+          Days
+          <select bind:value={draft.days}>
+            {#each dayOptions as option}
+              <option value={option}>{option}d</option>
+            {/each}
+          </select>
+        </label>
 
-      <label>
-        Region
-        <select bind:value={draft.region}>
-          {#each regions as region}
-            <option value={region}>{humanize(region, 'All regions')}</option>
-          {/each}
-        </select>
-      </label>
+        <label>
+          Region
+          <select bind:value={draft.region}>
+            {#each regions as region}
+              <option value={region}>{regionLabel(region)}</option>
+            {/each}
+          </select>
+        </label>
 
-      <label>
-        Patch
-        <input bind:value={draft.patchIdInput} inputmode="numeric" placeholder="Any" />
-      </label>
+        <label>
+          Content
+          <select bind:value={draft.contentType}>
+            {#each contentTypes as option}
+              <option value={option}>{contentTypeLabel(option)}</option>
+            {/each}
+          </select>
+        </label>
 
-      <label>
-        Content
-        <select bind:value={draft.contentType}>
-          {#each contentTypes as option}
-            <option value={option}>{humanize(option, 'All content')}</option>
-          {/each}
-        </select>
-      </label>
+        <label>
+          Scale
+          <select bind:value={draft.fightScale}>
+            {#each fightScales as option}
+              <option value={option}>{fightScaleLabel(option)}</option>
+            {/each}
+          </select>
+        </label>
+      </div>
 
-      <label>
-        Scale
-        <select bind:value={draft.fightScale}>
-          {#each fightScales as option}
-            <option value={option}>{humanize(option, 'All scales')}</option>
-          {/each}
-        </select>
-      </label>
+      <div class="filter-row secondary-row">
+        <label>
+          Patch
+          <input bind:value={draft.patchIdInput} inputmode="numeric" placeholder="Any" />
+        </label>
 
-      <label class="wide">
-        Kill area
-        <input bind:value={draft.killArea} placeholder="Exact slug or raw area name" />
-      </label>
+        <label>
+          Rows
+          <select bind:value={draft.limit}>
+            {#each limitOptions as option}
+              <option value={option}>{option}</option>
+            {/each}
+          </select>
+        </label>
 
-      <label>
-        Rows
-        <select bind:value={draft.limit}>
-          {#each limitOptions as option}
-            <option value={option}>{option}</option>
-          {/each}
-        </select>
-      </label>
+        <label>
+          Min sample
+          <select bind:value={draft.minSample}>
+            {#each minSampleOptions as option}
+              <option value={option}>{option}</option>
+            {/each}
+          </select>
+        </label>
 
-      <label>
-        Min sample
-        <select bind:value={draft.minSample}>
-          {#each minSampleOptions as option}
-            <option value={option}>{option}</option>
-          {/each}
-        </select>
-      </label>
-
-      <div class="actions">
-        <button class="primary" type="submit">Apply</button>
-        <button class="secondary" type="button" on:click={resetFilters}>Reset</button>
+        <div class="filter-actions">
+          <button class="primary-button" type="submit">Update</button>
+          <button class="secondary-button" type="button" on:click={resetFilters}>Reset</button>
+        </div>
       </div>
     </form>
   </section>
 
-  <section class="status-band">
-    <div>
-      <strong>Main-hand leaderboard</strong>
-      <span>
-        {leaderboardRows.length} rows
-        {#if lastUpdated}
-          · updated {new Date(lastUpdated).toLocaleString()}
-        {/if}
+  <section class="summary-band">
+    <div class="summary-copy">
+      <strong>Current slice</strong>
+      <span>{filterSummary}</span>
+    </div>
+    <div class="summary-meta">
+      <span class="timestamp">Updated {formatTimestamp(lastUpdated)}</span>
+      <span class={`api-pill ${apiStatus}`}>
+        {apiStatus === 'ready'
+          ? 'API connected'
+          : apiStatus === 'error'
+            ? 'API issue'
+            : 'Checking API'}
       </span>
     </div>
-    <span class={`api-pill ${apiStatus}`}>
-      {apiStatus === 'ready' ? 'API connected' : apiStatus === 'error' ? 'API issue' : 'Loading API'}
-    </span>
   </section>
 
-  <section class="workspace">
-    <section class="leaderboard-shell" aria-label="Main-hand leaderboard">
-      <header class="section-head">
-        <h2>Leaderboard</h2>
-        <span>Adjusted score first, then sample and appearances.</span>
+  <section class="content-grid">
+    <section class="surface leaderboard-panel" aria-label="Main-hand leaderboard">
+      <header class="panel-head">
+        <div>
+          <p class="eyebrow">Leaderboard</p>
+          <h2>Weapon rankings</h2>
+        </div>
+        <span>Adjusted score, pick rate, and sample strength in one scan.</span>
       </header>
 
       {#if leaderboardState === 'loading'}
-        <div class="loading-list" aria-label="Loading leaderboard">
-          {#each Array(7) as _}
+        <div class="loading-table" aria-label="Loading leaderboard">
+          {#each Array(8) as _}
             <div class="loading-row"></div>
           {/each}
         </div>
       {:else if leaderboardState === 'error'}
-        <div class="empty-panel">
-          <h3>Leaderboard unavailable</h3>
-          <p>{leaderboardError}</p>
+        <div class="empty-state">
+          <h3>API connection issue.</h3>
+          <p>Ranking data could not be loaded. Please try again in a moment.</p>
+          <button class="secondary-button" type="button" on:click={() => void loadLeaderboard()}>
+            Retry
+          </button>
         </div>
       {:else if leaderboardRows.length === 0}
-        <div class="empty-panel">
-          <h3>No rows for this slice</h3>
-          <p>Try a broader region, content filter, or lower minimum sample.</p>
+        <div class="empty-state">
+          <h3>No rankings for this slice.</h3>
+          <p>Try a broader region, a wider time range, or a lower sample gate.</p>
         </div>
       {:else}
-        <ol class="leaderboard-list">
-          {#each leaderboardRows as row, index}
-            {@const parsed = parseItemType(row.item_type)}
-            <li>
-              <button
-                class:selected={row.item_type === selectedItemType}
-                class="leaderboard-row"
-                type="button"
-                on:click={() => selectItem(row.item_type)}
-              >
-                <span class="rank">#{index + 1}</span>
-                <img alt={parsed.label} src={itemImageUrl(row.item_type)} loading="lazy" />
-                <div class="entity-copy">
-                  <strong>{parsed.label}</strong>
-                  <span>
-                    {parsed.tier}{parsed.enchantment} · {row.item_type}
-                  </span>
-                  {#if row.top_build_key}
-                    <em>{row.top_build_key}</em>
-                  {/if}
-                </div>
-                <dl class="row-metrics">
-                  <div>
-                    <dt>Adjusted</dt>
-                    <dd class:positive={row.adjusted_score >= 0}>{formatSignedPercent(row.adjusted_score)}</dd>
-                  </div>
-                  <div>
-                    <dt>Kill-side</dt>
-                    <dd>{formatPercent(row.kill_side_rate)}</dd>
-                  </div>
-                  <div>
-                    <dt>K/D</dt>
-                    <dd>{formatDecimal(row.kd_ratio)}</dd>
-                  </div>
-                  <div>
-                    <dt>Sample</dt>
-                    <dd>{formatDecimal(row.sample, 0)}</dd>
-                  </div>
-                  <div>
-                    <dt>Pick</dt>
-                    <dd>{formatPercent(row.pick_rate)}</dd>
-                  </div>
-                </dl>
-                <span class={`confidence ${confidenceTone(row.confidence)}`}>{row.confidence}</span>
-              </button>
-            </li>
-          {/each}
-        </ol>
+        <div class="table-scroll">
+          <table class="rank-table">
+            <thead>
+              <tr>
+                <th class="rank-col">#</th>
+                <th>Weapon</th>
+                <th class="metric-col">Adjusted</th>
+                <th class="metric-col">Kill-side</th>
+                <th class="metric-col">Pick rate</th>
+                <th class="metric-col">Sample</th>
+                <th class="metric-col">Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each leaderboardRows as row, index}
+                {@const parsed = parseItemType(row.item_type)}
+                <tr
+                  class:selected={row.item_type === selectedItemType}
+                  role="button"
+                  tabindex="0"
+                  aria-label={`Open ${parsed.label} detail`}
+                  on:click={() => selectItem(row.item_type)}
+                  on:keydown={(event) => selectTableRow(event, row.item_type)}
+                >
+                  <td class="rank-col">#{index + 1}</td>
+                  <td>
+                    <div class="weapon-cell">
+                      <img alt={parsed.label} src={itemImageUrl(row.item_type)} loading="lazy" />
+                      <div class="weapon-copy">
+                        <strong>{parsed.label}</strong>
+                        <span>{tierBadge(row.item_type)}</span>
+                        <code>{row.item_type}</code>
+                      </div>
+                    </div>
+                  </td>
+                  <td class:positive={row.adjusted_score >= 0}>{formatSignedPercent(row.adjusted_score)}</td>
+                  <td>{formatPercent(row.kill_side_rate)}</td>
+                  <td>{formatPercent(row.pick_rate)}</td>
+                  <td>{formatDecimal(row.sample, 0)}</td>
+                  <td>
+                    <span class={`confidence ${confidenceTone(row.confidence)}`}>{row.confidence}</span>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
       {/if}
     </section>
 
-    <aside class="detail-shell">
-      <section class="detail-section">
-        <header class="section-head">
-          <h2>Item detail</h2>
-          <span>Main hand focus with representative builds.</span>
+    <aside class="detail-column">
+      <section class="surface detail-panel">
+        <header class="panel-head">
+          <div>
+            <p class="eyebrow">Selected weapon</p>
+            <h2>{selectedItemParsed ? selectedItemParsed.label : 'Choose a weapon'}</h2>
+          </div>
+          {#if selectedItemParsed}
+            <span>{selectedItemParsed.tier}{selectedItemParsed.enchantment}</span>
+          {/if}
         </header>
 
         {#if itemState === 'loading'}
           <div class="loading-block"></div>
         {:else if itemState === 'error'}
-          <div class="empty-panel">
-            <h3>Item detail unavailable</h3>
-            <p>{itemError}</p>
+          <div class="empty-state compact">
+            <h3>Item detail unavailable.</h3>
+            <p>The selected weapon could not be loaded right now.</p>
+            <button class="secondary-button" type="button" on:click={() => void loadItemDetail()}>
+              Retry
+            </button>
           </div>
-        {:else if itemDetail}
-          {@const selectedItem = parseItemType(itemDetail.item_type)}
-          <div class="detail-header">
-            <img alt={selectedItem.label} src={itemImageUrl(itemDetail.item_type)} loading="lazy" />
+        {:else if itemDetail && selectedItemParsed}
+          <div class="selection-header">
+            <img alt={selectedItemParsed.label} src={itemImageUrl(itemDetail.item_type)} loading="lazy" />
             <div>
-              <p>{selectedItem.tier}{selectedItem.enchantment}</p>
-              <h3>{selectedItem.label}</h3>
+              <strong>{selectedItemParsed.label}</strong>
               <span>{itemDetail.item_type}</span>
             </div>
           </div>
 
-          <dl class="summary-grid">
+          <dl class="metric-strip">
             {#each metricsFor(itemDetail.summary) as metric}
               <div>
                 <dt>{metric.label}</dt>
-                <dd>{metric.value}</dd>
+                <dd class:positive={metric.tone}>{metric.value}</dd>
               </div>
             {/each}
           </dl>
 
-          <section class="subsection">
-            <header class="subhead">
-              <h4>Top builds</h4>
+          <section class="detail-block">
+            <div class="block-head">
+              <h3>Top builds</h3>
               <span>Appearance first, adjusted score second.</span>
-            </header>
+            </div>
             {#if itemDetail.builds.top_builds.length === 0}
               <p class="empty-copy">No build rows for this slice.</p>
             {:else}
-              <div class="build-list">
+              <div class="build-stack">
                 {#each itemDetail.builds.top_builds as build}
                   <button
                     class:selected={build.build_key === selectedBuildKey}
@@ -640,176 +689,166 @@
                     type="button"
                     on:click={() => selectBuild(build.build_key)}
                   >
-                    <div class="build-main">
-                      <strong>{build.build_key}</strong>
-                      <span>{formatSignedPercent(build.adjusted_score)} · {formatDecimal(build.sample, 0)} sample</span>
+                    <div class="build-row-main">
+                      <strong>{formatSignedPercent(build.adjusted_score)}</strong>
+                      <span>{formatDecimal(build.sample, 0)} sample</span>
                     </div>
-                    <div class="component-strip">
+                    <div class="build-row-copy">
                       {#if build.components}
                         {#each buildComponents(build.components) as component}
                           <span>{component.slot}: {component.label}</span>
                         {/each}
                       {/if}
                     </div>
+                    <code>{build.build_key}</code>
                   </button>
                 {/each}
               </div>
             {/if}
           </section>
 
-          <section class="subsection">
-            <header class="subhead">
-              <h4>Content split</h4>
-              <span>Grouped by derived content type.</span>
-            </header>
-            <div class="distribution-list">
-              {#each itemDetail.distributions.by_content_type as row}
-                <div class="distribution-row">
-                  <div class="distribution-copy">
-                    <strong>{distributionLabel(row, 'content')}</strong>
-                    <span>{formatPercent(row.kill_side_rate)} kill-side · {formatDecimal(row.sample, 0)} sample</span>
-                  </div>
-                  <div class="bar-track">
-                    <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
-                  </div>
+          <section class="detail-block">
+            <div class="block-head">
+              <h3>Distribution</h3>
+              <span>How this weapon performs across content, scale, and patch.</span>
+            </div>
+            <div class="distribution-grid">
+              <div>
+                <h4>Content</h4>
+                <div class="distribution-list">
+                  {#each itemDetail.distributions.by_content_type as row}
+                    <div class="distribution-row">
+                      <div class="distribution-copy">
+                        <strong>{distributionLabel(row, 'content')}</strong>
+                        <span>{formatPercent(row.kill_side_rate)} / {formatDecimal(row.sample, 0)} sample</span>
+                      </div>
+                      <div class="bar-track">
+                        <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
+                      </div>
+                    </div>
+                  {/each}
                 </div>
-              {/each}
-            </div>
-          </section>
-
-          <section class="subsection two-column">
-            <div>
-              <header class="subhead">
-                <h4>Scale split</h4>
-              </header>
-              <div class="distribution-list compact">
-                {#each itemDetail.distributions.by_fight_scale as row}
-                  <div class="distribution-row">
-                    <div class="distribution-copy">
-                      <strong>{distributionLabel(row, 'scale')}</strong>
-                      <span>{formatDecimal(row.sample, 0)} sample</span>
-                    </div>
-                    <div class="bar-track">
-                      <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
-                    </div>
-                  </div>
-                {/each}
               </div>
-            </div>
-            <div>
-              <header class="subhead">
-                <h4>Patch split</h4>
-              </header>
-              <div class="distribution-list compact">
-                {#each itemDetail.distributions.by_patch as row}
-                  <div class="distribution-row">
-                    <div class="distribution-copy">
-                      <strong>{distributionLabel(row, 'patch')}</strong>
-                      <span>{formatDecimal(row.sample, 0)} sample</span>
+
+              <div>
+                <h4>Scale</h4>
+                <div class="distribution-list">
+                  {#each itemDetail.distributions.by_fight_scale as row}
+                    <div class="distribution-row">
+                      <div class="distribution-copy">
+                        <strong>{distributionLabel(row, 'scale')}</strong>
+                        <span>{formatPercent(row.kill_side_rate)} / {formatDecimal(row.sample, 0)} sample</span>
+                      </div>
+                      <div class="bar-track">
+                        <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
+                      </div>
                     </div>
-                    <div class="bar-track">
-                      <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
-                    </div>
-                  </div>
-                {/each}
+                  {/each}
+                </div>
               </div>
             </div>
           </section>
         {:else}
-          <div class="empty-panel">
-            <h3>Select a main hand</h3>
-            <p>The first leaderboard row will open automatically when data is available.</p>
+          <div class="empty-state compact">
+            <h3>Select a weapon.</h3>
+            <p>The first row opens automatically when leaderboard data is available.</p>
           </div>
         {/if}
       </section>
 
-      <section class="detail-section build-detail">
-        <header class="section-head">
-          <h2>Build detail</h2>
-          <span>Selected from the build list above.</span>
+      <section class="surface detail-panel">
+        <header class="panel-head">
+          <div>
+            <p class="eyebrow">Selected build</p>
+            <h2>{selectedBuildKey ? 'Build breakdown' : 'Choose a build'}</h2>
+          </div>
+          {#if buildDetail}
+            <span>{buildComponentViews.length} pieces</span>
+          {/if}
         </header>
 
         {#if buildState === 'loading'}
-          <div class="loading-block"></div>
+          <div class="loading-block short"></div>
         {:else if buildState === 'error'}
-          <div class="empty-panel">
-            <h3>Build detail unavailable</h3>
-            <p>{buildError}</p>
+          <div class="empty-state compact">
+            <h3>Build detail unavailable.</h3>
+            <p>The selected build could not be loaded right now.</p>
+            <button class="secondary-button" type="button" on:click={() => void loadBuildDetail()}>
+              Retry
+            </button>
           </div>
         {:else if buildDetail}
-          <div class="detail-header compact-header">
-            <div>
-              <p>Build key</p>
-              <h3>{buildDetail.build_key}</h3>
-            </div>
-          </div>
-
-          <dl class="summary-grid">
+          <dl class="metric-strip">
             {#each metricsFor(buildDetail.summary) as metric}
               <div>
                 <dt>{metric.label}</dt>
-                <dd>{metric.value}</dd>
+                <dd class:positive={metric.tone}>{metric.value}</dd>
               </div>
             {/each}
           </dl>
 
-          <section class="subsection">
-            <header class="subhead">
-              <h4>Loadout</h4>
-            </header>
-            <div class="component-gallery">
-              {#each buildComponents(buildDetail.components) as component}
-                <div class="component-card">
+          <section class="detail-block">
+            <div class="block-head">
+              <h3>Loadout</h3>
+              <span>The selected build components in slot order.</span>
+            </div>
+            <div class="component-grid">
+              {#each buildComponentViews as component}
+                <div class="component-tile">
                   <img alt={component.label} src={itemImageUrl(component.itemType)} loading="lazy" />
                   <strong>{component.slot}</strong>
                   <span>{component.label}</span>
+                  <code>{component.itemType}</code>
                 </div>
               {/each}
             </div>
           </section>
 
-          <section class="subsection two-column">
-            <div>
-              <header class="subhead">
-                <h4>Content split</h4>
-              </header>
-              <div class="distribution-list compact">
-                {#each buildDetail.distributions.by_content_type as row}
-                  <div class="distribution-row">
-                    <div class="distribution-copy">
-                      <strong>{distributionLabel(row, 'content')}</strong>
-                      <span>{formatDecimal(row.sample, 0)} sample</span>
-                    </div>
-                    <div class="bar-track">
-                      <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
-                    </div>
-                  </div>
-                {/each}
-              </div>
+          <section class="detail-block">
+            <div class="block-head">
+              <h3>Context split</h3>
+              <span>Quick view of content and scale distribution.</span>
             </div>
-            <div>
-              <header class="subhead">
-                <h4>Scale split</h4>
-              </header>
-              <div class="distribution-list compact">
-                {#each buildDetail.distributions.by_fight_scale as row}
-                  <div class="distribution-row">
-                    <div class="distribution-copy">
-                      <strong>{distributionLabel(row, 'scale')}</strong>
-                      <span>{formatDecimal(row.sample, 0)} sample</span>
+            <div class="distribution-grid">
+              <div>
+                <h4>Content</h4>
+                <div class="distribution-list">
+                  {#each buildDetail.distributions.by_content_type as row}
+                    <div class="distribution-row">
+                      <div class="distribution-copy">
+                        <strong>{distributionLabel(row, 'content')}</strong>
+                        <span>{formatPercent(row.kill_side_rate)} / {formatDecimal(row.sample, 0)} sample</span>
+                      </div>
+                      <div class="bar-track">
+                        <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
+                      </div>
                     </div>
-                    <div class="bar-track">
-                      <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
+                  {/each}
+                </div>
+              </div>
+
+              <div>
+                <h4>Scale</h4>
+                <div class="distribution-list">
+                  {#each buildDetail.distributions.by_fight_scale as row}
+                    <div class="distribution-row">
+                      <div class="distribution-copy">
+                        <strong>{distributionLabel(row, 'scale')}</strong>
+                        <span>{formatPercent(row.kill_side_rate)} / {formatDecimal(row.sample, 0)} sample</span>
+                      </div>
+                      <div class="bar-track">
+                        <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
+                      </div>
                     </div>
-                  </div>
-                {/each}
+                  {/each}
+                </div>
               </div>
             </div>
           </section>
         {:else}
-          <div class="empty-panel">
-            <h3>Select a build</h3>
-            <p>Representative and top builds will appear after item detail loads.</p>
+          <div class="empty-state compact">
+            <h3>Select a build.</h3>
+            <p>Top builds from the selected weapon will appear here.</p>
           </div>
         {/if}
       </section>
@@ -824,8 +863,8 @@
 
   :global(body) {
     margin: 0;
-    background: #f3f1eb;
-    color: #131313;
+    background: #eff2ea;
+    color: #161a17;
     font-family:
       Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
@@ -836,408 +875,483 @@
     font: inherit;
   }
 
-  .app-shell {
-    min-height: 100vh;
+  :global(code) {
+    font-family:
+      'SFMono-Regular', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  }
+
+  .page {
+    margin: 0 auto;
+    max-width: 1440px;
     padding: 20px;
   }
 
-  .control-band,
-  .status-band,
-  .leaderboard-shell,
-  .detail-section {
-    margin: 0 auto;
-    max-width: 1500px;
+  .hero-band,
+  .summary-band,
+  .content-grid {
+    width: 100%;
   }
 
-  .control-band {
-    align-items: start;
+  .hero-band {
     display: grid;
-    gap: 20px;
-    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-    margin-bottom: 14px;
+    gap: 18px;
+    grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.9fr);
+    margin-bottom: 16px;
   }
 
-  .brand-block {
-    align-items: center;
-    display: flex;
-    gap: 16px;
-  }
-
-  .brand-mark {
-    align-items: center;
-    background: #171717;
+  .hero-copy,
+  .filter-panel,
+  .surface,
+  .hero-stat,
+  .component-tile,
+  .build-row {
+    border: 1px solid #d8ddd3;
     border-radius: 8px;
-    color: #f5cf5a;
-    display: inline-flex;
-    font-size: 20px;
-    font-weight: 800;
-    height: 64px;
-    justify-content: center;
-    width: 64px;
+    background: #fcfdf9;
   }
 
-  .brand-copy p,
-  .detail-header p {
-    color: #875d3c;
-    font-size: 13px;
-    font-weight: 700;
-    margin: 0 0 4px;
+  .hero-copy,
+  .filter-panel,
+  .surface {
+    padding: 20px;
+  }
+
+  .eyebrow {
+    margin: 0 0 8px;
+    color: #5b675d;
+    font-size: 12px;
+    font-weight: 800;
     text-transform: uppercase;
   }
 
-  .brand-copy h1,
-  .section-head h2,
-  .detail-header h3 {
-    line-height: 1.1;
+  h1,
+  h2,
+  h3,
+  h4,
+  p {
     margin: 0;
   }
 
-  .brand-copy h1 {
-    font-size: 34px;
+  .hero-copy h1 {
+    font-size: 38px;
+    line-height: 1.05;
+    max-width: 12ch;
   }
 
-  .brand-copy span,
-  .section-head span,
-  .status-band span,
-  .detail-header span {
-    color: #5f655f;
-    display: block;
-    font-size: 14px;
-    margin-top: 6px;
+  .hero-text {
+    color: #586458;
+    font-size: 15px;
+    line-height: 1.6;
+    margin-top: 12px;
+    max-width: 62ch;
+  }
+
+  .hero-stats {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 18px;
+  }
+
+  .hero-stat {
+    padding: 14px;
+  }
+
+  .hero-stat span,
+  .summary-copy span,
+  .summary-meta span,
+  .panel-head span,
+  .selection-header span,
+  .distribution-copy span,
+  .build-row span,
+  .component-tile span,
+  .empty-state p,
+  .empty-copy {
+    color: #5b675d;
+    font-size: 13px;
+    line-height: 1.5;
     overflow-wrap: anywhere;
   }
 
-  .filter-grid {
+  .hero-stat strong {
+    display: block;
+    font-size: 18px;
+    line-height: 1.3;
+    margin-top: 4px;
+    overflow-wrap: anywhere;
+  }
+
+  .filter-panel {
     display: grid;
     gap: 12px;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .filter-row {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .secondary-row {
+    grid-template-columns: minmax(0, 1fr) 120px 140px auto;
   }
 
   label {
-    color: #464d46;
+    color: #4d584e;
     display: grid;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 800;
     gap: 6px;
     text-transform: uppercase;
   }
 
-  label.wide {
-    grid-column: span 2;
-  }
-
   input,
-  select,
-  .api-pill,
-  .leaderboard-row,
-  .build-row,
-  .component-card {
-    background: #fffdf8;
-    border: 1px solid #ddd4c9;
+  select {
+    min-height: 42px;
+    padding: 0 12px;
+    color: #161a17;
+    background: #f6f8f3;
+    border: 1px solid #d8ddd3;
     border-radius: 8px;
   }
 
-  input,
-  select {
-    color: #131313;
-    min-height: 42px;
-    padding: 0 12px;
-  }
-
-  .actions {
+  .filter-actions {
     align-items: end;
     display: flex;
     gap: 8px;
+    justify-content: flex-end;
   }
 
-  .actions button {
-    border: 0;
+  .primary-button,
+  .secondary-button {
+    min-height: 42px;
+    padding: 0 14px;
     border-radius: 8px;
+    border: 0;
     cursor: pointer;
     font-weight: 800;
-    min-height: 42px;
-    padding: 0 16px;
   }
 
-  .actions .primary {
-    background: #171717;
-    color: #f5cf5a;
+  .primary-button {
+    background: #161a17;
+    color: #f5f7f1;
   }
 
-  .actions .secondary {
-    background: #e6ded3;
-    color: #171717;
+  .secondary-button {
+    background: #e4e9df;
+    color: #161a17;
   }
 
-  .status-band {
+  .summary-band {
     align-items: center;
-    border-bottom: 1px solid #ddd4c9;
     display: flex;
     justify-content: space-between;
+    gap: 12px;
     margin-bottom: 16px;
-    padding-bottom: 12px;
+    padding: 4px 2px;
   }
 
-  .status-band strong {
+  .summary-copy strong {
     display: block;
-    font-size: 18px;
+    font-size: 15px;
     margin-bottom: 4px;
+  }
+
+  .summary-meta {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+
+  .timestamp {
+    white-space: nowrap;
   }
 
   .api-pill {
     align-items: center;
-    color: #5f655f;
+    border-radius: 999px;
     display: inline-flex;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 800;
-    min-height: 34px;
+    min-height: 32px;
     padding: 0 12px;
   }
 
+  .api-pill.loading {
+    background: #eef0e7;
+    color: #536054;
+  }
+
   .api-pill.ready {
-    background: #eef6dd;
-    border-color: #c8d56c;
-    color: #405018;
+    background: #e3f2e7;
+    color: #236340;
   }
 
   .api-pill.error {
-    background: #fff0ef;
-    border-color: #ebb4ad;
-    color: #a2372f;
+    background: #faece9;
+    color: #a13d37;
   }
 
-  .workspace {
+  .content-grid {
     display: grid;
-    gap: 20px;
-    grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
-    margin: 0 auto;
-    max-width: 1500px;
+    gap: 18px;
+    grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
   }
 
-  .section-head {
-    border-bottom: 1px solid #ddd4c9;
-    padding-bottom: 12px;
+  .detail-column {
+    display: grid;
+    gap: 18px;
   }
 
-  .section-head h2 {
+  .panel-head {
+    align-items: end;
+    border-bottom: 1px solid #e1e6dc;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 14px;
+  }
+
+  .panel-head h2 {
     font-size: 24px;
+    line-height: 1.1;
   }
 
-  .leaderboard-list,
-  .distribution-list,
-  .build-list {
+  .loading-table,
+  .loading-block {
     display: grid;
     gap: 10px;
-    list-style: none;
-    margin: 0;
-    padding: 0;
+    margin-top: 18px;
   }
 
-  .leaderboard-row,
-  .build-row {
-    align-items: center;
-    color: inherit;
-    cursor: pointer;
+  .loading-row,
+  .loading-block {
+    animation: pulse 1.2s ease-in-out infinite;
+    background: linear-gradient(90deg, #eef1eb, #ffffff, #eef1eb);
+    border-radius: 8px;
+  }
+
+  .loading-row {
+    height: 68px;
+  }
+
+  .loading-block {
+    height: 220px;
+  }
+
+  .loading-block.short {
+    height: 180px;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 0.65;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .empty-state {
     display: grid;
-    gap: 12px;
-    padding: 14px;
-    text-align: left;
+    gap: 10px;
+    justify-items: start;
+    padding: 28px 0 6px;
+  }
+
+  .empty-state.compact {
+    padding-top: 18px;
+  }
+
+  .table-scroll {
+    margin-top: 16px;
+    overflow-x: auto;
+  }
+
+  .rank-table {
+    border-collapse: collapse;
+    min-width: 760px;
     width: 100%;
   }
 
-  .leaderboard-row {
-    grid-template-columns: 56px 56px minmax(200px, 1.2fr) minmax(260px, 1fr) auto;
+  .rank-table th,
+  .rank-table td {
+    border-bottom: 1px solid #e4e9df;
+    padding: 14px 10px;
+    text-align: left;
+    vertical-align: middle;
   }
 
-  .leaderboard-row.selected,
-  .build-row.selected {
-    border-color: #171717;
-    box-shadow: inset 0 0 0 1px #171717;
+  .rank-table th {
+    color: #657166;
+    font-size: 12px;
+    font-weight: 800;
+    position: sticky;
+    top: 0;
+    background: #fcfdf9;
+    text-transform: uppercase;
+    z-index: 1;
   }
 
-  .rank {
-    color: #c0532d;
-    font-size: 18px;
-    font-weight: 900;
+  .rank-table tbody tr {
+    cursor: pointer;
   }
 
-  .leaderboard-row img,
-  .detail-header img,
-  .component-card img {
-    background: #f5f1e8;
-    border: 1px solid #ddd4c9;
+  .rank-table tbody tr:hover {
+    background: #f5f8f1;
+  }
+
+  .rank-table tbody tr.selected {
+    background: #edf5ea;
+  }
+
+  .rank-col {
+    width: 64px;
+    white-space: nowrap;
+  }
+
+  .metric-col {
+    width: 120px;
+    white-space: nowrap;
+  }
+
+  .weapon-cell,
+  .selection-header {
+    align-items: center;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .weapon-cell img,
+  .selection-header img,
+  .component-tile img {
+    height: 54px;
+    width: 54px;
     border-radius: 8px;
+    border: 1px solid #d8ddd3;
+    background: #f4f6f0;
     object-fit: contain;
-  }
-
-  .leaderboard-row img {
-    height: 56px;
     padding: 4px;
-    width: 56px;
   }
 
-  .entity-copy {
+  .weapon-copy,
+  .selection-header div {
     display: grid;
     gap: 4px;
     min-width: 0;
   }
 
-  .entity-copy strong,
-  .build-main strong {
+  .weapon-copy strong,
+  .selection-header strong,
+  .component-tile strong,
+  .distribution-copy strong,
+  .build-row strong {
     overflow-wrap: anywhere;
   }
 
-  .entity-copy span,
-  .entity-copy em,
-  .build-main span,
-  .distribution-copy span,
-  .component-card span,
-  .empty-panel p {
-    color: #5f655f;
-    font-size: 13px;
-    margin: 0;
-    overflow-wrap: anywhere;
+  .weapon-copy span,
+  .selection-header span {
+    font-size: 12px;
   }
 
-  .entity-copy em {
-    font-style: normal;
-  }
-
-  .row-metrics,
-  .summary-grid {
-    display: grid;
-    gap: 12px;
-  }
-
-  .row-metrics {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
-  .row-metrics div,
-  .summary-grid div {
-    display: grid;
-    gap: 4px;
-  }
-
-  dt {
-    color: #7b6654;
+  code {
+    color: #718071;
     font-size: 11px;
-    font-weight: 700;
-    margin: 0;
-    text-transform: uppercase;
+    overflow-wrap: anywhere;
   }
 
-  dd {
-    font-size: 14px;
-    font-weight: 800;
-    margin: 0;
-  }
-
-  dd.positive {
-    color: #2f6c44;
+  .positive {
+    color: #22653f;
   }
 
   .confidence {
-    align-self: start;
+    display: inline-flex;
+    align-items: center;
     border-radius: 999px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 800;
-    padding: 6px 10px;
+    min-height: 28px;
+    padding: 0 10px;
     text-transform: uppercase;
   }
 
   .confidence.low {
-    background: #f3ebe3;
-    color: #825c2e;
+    background: #f3ece2;
+    color: #84653b;
   }
 
   .confidence.medium {
     background: #edf2dd;
-    color: #536500;
+    color: #5c6e12;
   }
 
   .confidence.high {
     background: #e4f1ea;
-    color: #2f6c44;
+    color: #236340;
   }
 
-  .detail-shell {
-    display: grid;
-    gap: 20px;
-  }
-
-  .detail-section {
-    border-top: 1px solid #ddd4c9;
-    padding-top: 4px;
-  }
-
-  .detail-header {
-    align-items: center;
-    display: grid;
-    gap: 14px;
-    grid-template-columns: auto minmax(0, 1fr);
+  .selection-header {
     margin-top: 16px;
   }
 
-  .detail-header img {
-    height: 72px;
-    padding: 6px;
-    width: 72px;
-  }
-
-  .compact-header {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .summary-grid {
+  .metric-strip {
+    display: grid;
+    gap: 0;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     margin: 18px 0 0;
   }
 
-  .subsection {
-    border-top: 1px solid #ddd4c9;
+  .metric-strip div {
+    padding: 12px 0;
+    border-bottom: 1px solid #e4e9df;
+  }
+
+  .metric-strip dt {
+    color: #647064;
+    font-size: 11px;
+    font-weight: 800;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+
+  .metric-strip dd {
+    font-size: 16px;
+    font-weight: 800;
+    margin: 0;
+  }
+
+  .detail-block {
+    border-top: 1px solid #e4e9df;
     margin-top: 18px;
     padding-top: 16px;
   }
 
-  .subhead {
+  .block-head {
     align-items: baseline;
     display: flex;
     justify-content: space-between;
-    margin-bottom: 10px;
+    gap: 12px;
+    margin-bottom: 12px;
   }
 
-  .subhead h4 {
+  .block-head h3,
+  .distribution-grid h4 {
     font-size: 17px;
-    margin: 0;
   }
 
-  .build-row {
-    gap: 10px;
-  }
-
-  .build-main {
+  .distribution-grid {
     display: grid;
-    gap: 4px;
+    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .component-strip,
-  .component-gallery {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .component-strip span,
-  .component-card {
-    min-width: 0;
-  }
-
-  .component-strip span {
-    background: #f3eee5;
-    border-radius: 8px;
-    font-size: 12px;
-    padding: 6px 8px;
+  .distribution-list,
+  .build-stack {
+    display: grid;
+    gap: 10px;
   }
 
   .distribution-row {
@@ -1248,143 +1362,112 @@
   .distribution-copy {
     align-items: baseline;
     display: flex;
-    justify-content: space-between;
     gap: 12px;
+    justify-content: space-between;
   }
 
   .bar-track {
-    background: #e7dfd2;
-    border-radius: 999px;
     height: 10px;
     overflow: hidden;
+    border-radius: 999px;
+    background: #e5eadf;
   }
 
   .bar-track span {
-    background: linear-gradient(90deg, #171717, #d56f3a, #f1b64e);
     display: block;
     height: 100%;
+    background: linear-gradient(90deg, #1d2d23, #2d7a4d, #d5b257);
   }
 
-  .two-column {
+  .build-row {
     display: grid;
-    gap: 16px;
+    gap: 8px;
+    padding: 12px;
+    text-align: left;
+    width: 100%;
+  }
+
+  .build-row.selected {
+    border-color: #1d2d23;
+    box-shadow: inset 0 0 0 1px #1d2d23;
+  }
+
+  .build-row-main {
+    align-items: baseline;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+  }
+
+  .build-row-copy {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .build-row-copy span {
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: #eef2e9;
+    font-size: 12px;
+  }
+
+  .component-grid {
+    display: grid;
+    gap: 10px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .component-gallery {
-    display: grid;
-    gap: 10px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .component-card {
+  .component-tile {
     display: grid;
     gap: 8px;
     justify-items: start;
-    min-height: 176px;
-    padding: 12px;
+    min-height: 170px;
+    padding: 14px;
   }
 
-  .component-card img {
-    height: 56px;
-    padding: 4px;
-    width: 56px;
-  }
-
-  .empty-panel {
-    padding: 28px 0 8px;
-  }
-
-  .empty-panel h3 {
-    margin: 0 0 8px;
-  }
-
-  .empty-copy {
-    color: #5f655f;
-    margin: 0;
-  }
-
-  .loading-list,
-  .loading-block {
-    margin-top: 18px;
-  }
-
-  .loading-row,
-  .loading-block {
-    animation: pulse 1.15s ease-in-out infinite;
-    background: linear-gradient(90deg, #ece5d9, #fffdf8, #ece5d9);
-    border-radius: 8px;
-  }
-
-  .loading-row {
-    height: 92px;
-  }
-
-  .loading-block {
-    height: 220px;
-  }
-
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 0.62;
-    }
-    50% {
-      opacity: 1;
-    }
-  }
-
-  @media (max-width: 1220px) {
-    .workspace {
+  @media (max-width: 1180px) {
+    .hero-band,
+    .content-grid {
       grid-template-columns: 1fr;
     }
-
-    .summary-grid,
-    .two-column,
-    .component-gallery {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
   }
 
-  @media (max-width: 920px) {
-    .app-shell {
+  @media (max-width: 840px) {
+    .page {
       padding: 14px;
     }
 
-    .control-band {
+    .hero-copy h1 {
+      font-size: 32px;
+    }
+
+    .hero-stats,
+    .metric-strip,
+    .distribution-grid,
+    .component-grid {
       grid-template-columns: 1fr;
     }
 
-    .filter-grid {
+    .filter-row,
+    .secondary-row {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    label.wide {
-      grid-column: span 2;
-    }
-
-    .leaderboard-row {
-      grid-template-columns: 40px 48px minmax(0, 1fr);
-    }
-
-    .row-metrics {
+    .filter-actions {
       grid-column: 1 / -1;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      justify-content: stretch;
     }
 
-    .confidence {
-      justify-self: start;
+    .filter-actions :global(button) {
+      flex: 1;
     }
 
-    .summary-grid,
-    .two-column,
-    .component-gallery {
-      grid-template-columns: 1fr;
-    }
-
-    .status-band,
+    .summary-band,
+    .summary-meta,
+    .block-head,
     .distribution-copy,
-    .subhead {
+    .build-row-main {
       align-items: start;
       display: grid;
       gap: 6px;

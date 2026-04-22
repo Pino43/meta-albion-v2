@@ -3,6 +3,7 @@ import { getApiBaseUrl } from '$lib/config';
 export const regions = ['all', 'europe', 'americas', 'asia'] as const;
 export const contentTypes = [
   'all',
+  'open_world',
   'corrupted_dungeon',
   'mists',
   'hellgate',
@@ -120,7 +121,6 @@ export type LeaderboardFilters = {
   patchId: number | null;
   contentType: ContentTypeFilter;
   fightScale: FightScaleFilter;
-  killArea: string;
   limit: number;
   minSample: number;
 };
@@ -146,9 +146,6 @@ function appendSharedFilters(params: URLSearchParams, filters: DetailFilters) {
   }
   if (filters.fightScale !== 'all') {
     params.set('fight_scale', filters.fightScale);
-  }
-  if (filters.killArea.trim()) {
-    params.set('kill_area', filters.killArea.trim());
   }
 }
 
