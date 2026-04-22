@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 CONTENT_TYPES: tuple[str, ...] = (
+    "open_world",
     "corrupted_dungeon",
     "mists",
     "hellgate",
@@ -24,9 +25,10 @@ FIGHT_SCALE_BUCKETS: tuple[str, ...] = (
     "zvz",
     "unknown",
 )
-EVENT_CONTEXT_CLASSIFIER_VERSION = 1
+EVENT_CONTEXT_CLASSIFIER_VERSION = 2
 
 ContentType = Literal[
+    "open_world",
     "corrupted_dungeon",
     "mists",
     "hellgate",
@@ -70,6 +72,34 @@ def _as_int(value: Any) -> int | None:
         return None
 
 
+def _actor_identity(actor: Any) -> tuple[str | None, str | None] | None:
+    if not isinstance(actor, dict):
+        return None
+    actor_id = actor.get("Id")
+    actor_name = actor.get("Name")
+    normalized_id = str(actor_id) if actor_id is not None else None
+    normalized_name = str(actor_name).strip().casefold() if actor_name is not None else None
+    if normalized_id is None and not normalized_name:
+        return None
+    return normalized_id, normalized_name or None
+
+
+def _count_unique_kill_side_actors(raw_event: dict[str, Any]) -> int:
+    participants = raw_event.get("Participants")
+    if isinstance(participants, list) and participants:
+        seen: set[tuple[str | None, str | None]] = set()
+        unnamed_count = 0
+        for participant in participants:
+            identity = _actor_identity(participant)
+            if identity is None:
+                unnamed_count += 1
+                continue
+            seen.add(identity)
+        return max(1, len(seen) + unnamed_count)
+
+    return 1
+
+
 def normalize_kill_area_slug(value: str | None) -> str | None:
     if value is None:
         return None
@@ -80,6 +110,8 @@ def normalize_kill_area_slug(value: str | None) -> str | None:
 def classify_content_type(kill_area_slug: str | None) -> ContentType:
     if not kill_area_slug:
         return "unknown"
+    if kill_area_slug == "open_world":
+        return "open_world"
     if kill_area_slug.startswith("corrupted"):
         return "corrupted_dungeon"
     if kill_area_slug.startswith("mist"):
@@ -116,9 +148,7 @@ def build_event_context(
     time_stamp: datetime,
     raw_event: dict[str, Any],
 ) -> EventContext:
-    participants = raw_event.get("Participants")
-    participant_count = len(participants) if isinstance(participants, list) else 0
-    observed_kill_side_count = max(1, 1 + participant_count)
+    observed_kill_side_count = _count_unique_kill_side_actors(raw_event)
     reported_participant_count = _as_int(raw_event.get("NumberOfParticipants"))
     if reported_participant_count is None:
         reported_participant_count = observed_kill_side_count

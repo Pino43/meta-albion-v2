@@ -37,7 +37,15 @@ from albion_analytics.storage.status_repo import (
 
 Perspective = Literal["killer", "victim", "participant"]
 Region = Literal["europe", "americas", "asia"]
-ContentType = Literal["corrupted_dungeon", "mists", "hellgate", "roads", "abyssal", "unknown"]
+ContentType = Literal[
+    "open_world",
+    "corrupted_dungeon",
+    "mists",
+    "hellgate",
+    "roads",
+    "abyssal",
+    "unknown",
+]
 FightScale = Literal["solo", "duo", "small_party", "party", "large_party", "zvz", "unknown"]
 Connector = Callable[[Settings], Awaitable[psycopg.AsyncConnection]]
 

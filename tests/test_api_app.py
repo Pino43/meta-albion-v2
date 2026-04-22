@@ -335,7 +335,7 @@ def test_main_hand_leaderboard_passes_filters_to_reader() -> None:
 
     response = client.get(
         "/v1/leaderboards/main-hands?days=21&region=asia&patch_id=3"
-        "&content_type=mists&fight_scale=duo&kill_area=Mist Prime"
+        "&content_type=open_world&fight_scale=duo&kill_area=Mist Prime"
         "&limit=10&min_sample=30"
     )
 
@@ -344,7 +344,7 @@ def test_main_hand_leaderboard_passes_filters_to_reader() -> None:
         "days": 21,
         "region": "asia",
         "patch_id": 3,
-        "content_type": "mists",
+        "content_type": "open_world",
         "fight_scale": "duo",
         "kill_area": "mist_prime",
         "limit": 10,

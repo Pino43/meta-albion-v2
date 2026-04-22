@@ -13,6 +13,7 @@ def test_normalize_kill_area_slug_collapses_case_and_symbols() -> None:
 
 
 def test_classify_content_type_uses_prefix_heuristics() -> None:
+    assert classify_content_type("open_world") == "open_world"
     assert classify_content_type("corrupted_alpha") == "corrupted_dungeon"
     assert classify_content_type("mist_highlands") == "mists"
     assert classify_content_type("hellgate_red") == "hellgate"
@@ -44,6 +45,38 @@ def test_build_event_context_falls_back_to_observed_participant_count() -> None:
 
     assert context.kill_area_slug == "mist_prime"
     assert context.content_type == "mists"
+    assert context.observed_kill_side_count == 2
+    assert context.reported_participant_count == 2
+    assert context.fight_scale_bucket == "duo"
+
+
+def test_build_event_context_uses_open_world_content_type() -> None:
+    context = build_event_context(
+        source_region="europe",
+        event_id=11,
+        time_stamp=datetime(2026, 4, 20, tzinfo=UTC),
+        raw_event={"KillArea": "OPEN_WORLD"},
+    )
+
+    assert context.kill_area_slug == "open_world"
+    assert context.content_type == "open_world"
+
+
+def test_build_event_context_deduplicates_killer_from_observed_count() -> None:
+    context = build_event_context(
+        source_region="asia",
+        event_id=12,
+        time_stamp=datetime(2026, 4, 20, tzinfo=UTC),
+        raw_event={
+            "Killer": {"Id": "killer-id", "Name": "Killer"},
+            "Participants": [
+                {"Id": "killer-id", "Name": "Killer"},
+                {"Id": "ally-1", "Name": "Ally One"},
+                {"Id": "ally-2", "Name": "Ally Two"},
+            ],
+        },
+    )
+
     assert context.observed_kill_side_count == 3
     assert context.reported_participant_count == 3
     assert context.fight_scale_bucket == "small_party"

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
-LOADOUT_EXTRACTOR_VERSION = 2
+LOADOUT_EXTRACTOR_VERSION = 3
 
 Perspective = Literal["killer", "victim", "participant"]
 
@@ -84,6 +84,17 @@ def _as_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _actor_identity(actor: Any) -> tuple[str | None, str | None] | None:
+    if not isinstance(actor, dict):
+        return None
+    actor_id = _as_str(actor.get("Id"))
+    actor_name = _as_str(actor.get("Name"))
+    normalized_name = actor_name.strip().casefold() if actor_name else None
+    if actor_id is None and normalized_name is None:
+        return None
+    return actor_id, normalized_name
 
 
 def _slot_type(slot: Any) -> str | None:
@@ -166,6 +177,7 @@ def extract_event_loadouts(
 ) -> list[EventLoadout]:
     """Return killer, victim, and participant loadout rows for one raw event."""
     rows: list[EventLoadout] = []
+    killer_identity = _actor_identity(raw_event.get("Killer"))
     for perspective, key in (("killer", "Killer"), ("victim", "Victim")):
         row = _loadout_from_actor(
             source_region=source_region,
@@ -182,7 +194,13 @@ def extract_event_loadouts(
 
     participants = raw_event.get("Participants")
     if isinstance(participants, list):
+        seen_identities: set[tuple[str | None, str | None]] = set()
         for index, participant in enumerate(participants):
+            identity = _actor_identity(participant)
+            if identity is not None:
+                if identity == killer_identity or identity in seen_identities:
+                    continue
+                seen_identities.add(identity)
             row = _loadout_from_actor(
                 source_region=source_region,
                 event_id=event_id,

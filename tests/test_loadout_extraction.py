@@ -102,3 +102,42 @@ def test_extract_event_loadouts_returns_killer_victim_and_participants() -> None
     assert rows[1].player_name == "Victim"
     assert rows[2].participant_index == 0
     assert rows[2].kill_fame == 10
+
+
+def test_extract_event_loadouts_skips_killer_duplicate_in_participants() -> None:
+    raw = {
+        "Killer": {
+            "Id": "killer-id",
+            "Name": "Killer",
+            "Equipment": {"MainHand": {"Type": "T8_MAIN_SWORD"}},
+        },
+        "Victim": {
+            "Id": "victim-id",
+            "Name": "Victim",
+            "Equipment": {"MainHand": {"Type": "T7_MAIN_FIRESTAFF"}},
+        },
+        "Participants": [
+            {
+                "Id": "killer-id",
+                "Name": "Killer",
+                "Equipment": {"MainHand": {"Type": "T8_MAIN_SWORD"}},
+            },
+            {
+                "Id": "participant-id",
+                "Name": "Participant",
+                "Equipment": {"MainHand": {"Type": "T6_MAIN_BOW"}},
+            },
+        ],
+    }
+
+    rows = extract_event_loadouts(
+        source_region="asia",
+        event_id=2,
+        time_stamp=datetime(2026, 4, 20, tzinfo=UTC),
+        patch_id=None,
+        raw_event=raw,
+    )
+
+    assert [row.perspective for row in rows] == ["killer", "victim", "participant"]
+    assert [row.player_id for row in rows] == ["killer-id", "victim-id", "participant-id"]
+    assert rows[2].participant_index == 1

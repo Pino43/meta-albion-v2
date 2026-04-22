@@ -170,6 +170,7 @@ DDL_STATEMENTS: list[str] = [
       CONSTRAINT chk_event_contexts_content_type
         CHECK (
           content_type IN (
+            'open_world',
             'corrupted_dungeon',
             'mists',
             'hellgate',
@@ -199,6 +200,25 @@ DDL_STATEMENTS: list[str] = [
     """
     CREATE INDEX IF NOT EXISTS idx_event_contexts_filters
     ON event_contexts (content_type, fight_scale_bucket, time_stamp DESC)
+    """,
+    """
+    ALTER TABLE event_contexts
+    DROP CONSTRAINT IF EXISTS chk_event_contexts_content_type
+    """,
+    """
+    ALTER TABLE event_contexts
+    ADD CONSTRAINT chk_event_contexts_content_type
+      CHECK (
+        content_type IN (
+          'open_world',
+          'corrupted_dungeon',
+          'mists',
+          'hellgate',
+          'roads',
+          'abyssal',
+          'unknown'
+        )
+      )
     """,
     """
     CREATE TABLE IF NOT EXISTS daily_item_usage (
