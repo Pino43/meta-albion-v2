@@ -115,3 +115,33 @@ albion-collect-events
 - 킬 스트림 소스·크롤 전략: 전역 이벤트 폴링 vs 시드 플레이어 확장 등(부하·정책).
 - 보정 수식: IP·페임 정규화는 수식 확정 후 `analysis`에 반영.
 - 장비 페이지의 “기본 관점”: 킬(가해자) 위주 vs 데스(피해자) 위주 — 둘 다 탭으로 줄지, 하나만 기본으로 할지.
+
+## Current Project Direction (2026-04)
+
+- 현재 제품의 1차 운영 범위는 **수집기 + 집계 + read-only API + static web** 이다.
+  - collector: Railway worker
+  - database: Railway Postgres
+  - API: read-only Railway service
+  - web: SvelteKit static SPA, SSR 없음
+- 웹 프론트는 **SvelteKit + adapter-static**을 유지하고, **SSR/Node runtime 의존 배포는 피한다.**
+- 웹의 UX 방향은 landing page가 아니라 **바로 랭킹/통계 화면**이다.
+- 웹 디자인 목표는 **op.gg / MetaTFT 스타일의 통계 대시보드**에 가깝다.
+  - 한눈에 비교 가능한 table-first layout
+  - 높은 정보 밀도보다 **빠른 스캔 가능성** 우선
+  - raw key보다 사람이 읽는 label 우선
+  - API 에러는 상세 technical message보다 간단한 상태/재시도 중심
+- 현재 Gameinfo `/events` 기준으로 `KillArea`는 대부분 `OPEN_WORLD`일 수 있으므로,
+  - 프론트의 map/kill-area 선택 UI는 핵심 플로우에서 제외 가능
+  - 정확한 개별 맵명보다는 `open_world`, `mists`, `hellgate` 같은 coarse content filter를 우선한다
+- 최근 메타 분석의 핵심 기간은 **최근 7일**이다.
+  - raw 이벤트는 보존 기간 이후 정리 가능
+  - daily aggregate/outcome 테이블은 최근 메타 조회를 빠르게 지원해야 한다
+- `killer`, `victim`, `participant` 관점은 모두 유지한다.
+- 아이템/무기 이름 표시는 현재 로컬 매핑/파서 기반이다.
+  - 이 매핑은 사용자가 **나중에 직접 수정/확장하기 쉬운 구조**를 유지하는 것이 좋다
+  - 프론트에서 raw `item_type`은 보조 정보로만 보여주고, 주 표기는 readable label을 사용한다
+- Railway 운영 DB 접근은 원칙적으로 분리한다.
+  - 앱 서비스: 운영 `DATABASE_URL`
+  - 테스트/디버깅: 가능하면 별도 read-only URL
+  - Railway read-only 검증은 사용자가 직접 수행할 수 있으며, 에이전트는 결과 해석과 SQL 작성 위주로 돕는다
+- 더 자세한 현재 방향과 최근 결정은 `docs/PROJECT_DIRECTION.md`를 참고한다.
