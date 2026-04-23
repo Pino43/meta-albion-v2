@@ -373,6 +373,9 @@ async def _fetch_grouped_item_rows_from_aggregates(
     patch_id: int | None,
     content_type: str | None,
     fight_scale: str | None,
+    item_type: str | None = None,
+    group_sql: str = "item_type",
+    key_name: str = "item_type",
 ) -> list[dict[str, Any]]:
     lower_day = utc_day_lower_bound(days)
     where, params = _aggregate_filter_sql(
@@ -381,10 +384,13 @@ async def _fetch_grouped_item_rows_from_aggregates(
         content_type=content_type,
         fight_scale=fight_scale,
     )
+    if item_type is not None:
+        where.append("item_type = %s")
+        params.append(item_type)
     params = [lower_day, *params, slot]
     sql = f"""
     SELECT
-      item_type,
+      {group_sql} AS group_key,
       SUM(kill_credit) AS kill_credit,
       SUM(death_count) AS death_count,
       SUM(appearance_count) AS appearance_count,
@@ -394,12 +400,12 @@ async def _fetch_grouped_item_rows_from_aggregates(
     FROM daily_item_outcomes
     WHERE {" AND ".join(where)}
       AND slot = %s
-    GROUP BY item_type
+    GROUP BY group_key
     """
     async with conn.cursor() as cur:
         await cur.execute(sql, params)
         rows = await cur.fetchall()
-    return [_coerce_metric_row(row, "item_type") for row in rows]
+    return [_coerce_metric_row(row, key_name) for row in rows]
 
 
 async def _fetch_grouped_build_rows_from_aggregates(
@@ -410,6 +416,10 @@ async def _fetch_grouped_build_rows_from_aggregates(
     patch_id: int | None,
     content_type: str | None,
     fight_scale: str | None,
+    build_key: str | None = None,
+    main_hand_item_type: str | None = None,
+    group_sql: str = "build_key",
+    key_name: str = "build_key",
 ) -> list[dict[str, Any]]:
     lower_day = utc_day_lower_bound(days)
     where, params = _aggregate_filter_sql(
@@ -418,10 +428,16 @@ async def _fetch_grouped_build_rows_from_aggregates(
         content_type=content_type,
         fight_scale=fight_scale,
     )
+    if build_key is not None:
+        where.append("build_key = %s")
+        params.append(build_key)
+    if main_hand_item_type is not None:
+        where.append("split_part(build_key, '|', 4) = %s")
+        params.append(main_hand_item_type)
     params = [lower_day, *params]
     sql = f"""
     SELECT
-      build_key,
+      {group_sql} AS group_key,
       SUM(kill_credit) AS kill_credit,
       SUM(death_count) AS death_count,
       SUM(appearance_count) AS appearance_count,
@@ -430,12 +446,12 @@ async def _fetch_grouped_build_rows_from_aggregates(
       SUM(total_kill_fame) AS total_kill_fame
     FROM daily_build_outcomes
     WHERE {" AND ".join(where)}
-    GROUP BY build_key
+    GROUP BY group_key
     """
     async with conn.cursor() as cur:
         await cur.execute(sql, params)
         rows = await cur.fetchall()
-    return [_coerce_metric_row(row, "build_key") for row in rows]
+    return [_coerce_metric_row(row, key_name) for row in rows]
 
 
 async def _fetch_grouped_item_rows_from_raw(
@@ -793,34 +809,138 @@ async def fetch_item_detail(
     fight_scale: str | None,
     kill_area: str | None,
 ) -> dict[str, Any] | None:
-    all_item_rows = await _fetch_grouped_item_rows_from_raw(
-        conn,
-        slot=slot,
-        days=days,
-        region=region,
-        patch_id=patch_id,
-        content_type=content_type,
-        fight_scale=fight_scale,
-        kill_area=kill_area,
-    )
-    if not all_item_rows:
-        return None
-    baseline_rate = _baseline_rate(all_item_rows)
-    total_appearance_count = sum(row["appearance_count"] for row in all_item_rows)
-    item_row = next((row for row in all_item_rows if row["item_type"] == item_type), None)
-    if item_row is None:
-        return None
+    if kill_area is None:
+        all_item_rows = await _fetch_grouped_item_rows_from_aggregates(
+            conn,
+            slot=slot,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+        )
+        if not all_item_rows:
+            return None
+        baseline_rate = _baseline_rate(all_item_rows)
+        total_appearance_count = sum(row["appearance_count"] for row in all_item_rows)
+        item_row = next((row for row in all_item_rows if row["item_type"] == item_type), None)
+        if item_row is None:
+            return None
 
-    build_rows = await _fetch_grouped_build_rows_from_raw(
-        conn,
-        days=days,
-        region=region,
-        patch_id=patch_id,
-        content_type=content_type,
-        fight_scale=fight_scale,
-        kill_area=kill_area,
-        slot_filter=(slot, item_type),
-    )
+        build_rows = await _fetch_grouped_build_rows_from_aggregates(
+            conn,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+            main_hand_item_type=item_type,
+        )
+        by_content_type = await _fetch_grouped_item_rows_from_aggregates(
+            conn,
+            slot=slot,
+            item_type=item_type,
+            group_sql="content_type",
+            key_name="content_type",
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=None,
+            fight_scale=fight_scale,
+        )
+        by_fight_scale = await _fetch_grouped_item_rows_from_aggregates(
+            conn,
+            slot=slot,
+            item_type=item_type,
+            group_sql="fight_scale_bucket",
+            key_name="fight_scale",
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=None,
+        )
+        by_patch = await _fetch_grouped_item_rows_from_aggregates(
+            conn,
+            slot=slot,
+            item_type=item_type,
+            group_sql="patch_id",
+            key_name="patch_key",
+            days=days,
+            region=region,
+            patch_id=None,
+            content_type=content_type,
+            fight_scale=fight_scale,
+        )
+    else:
+        all_item_rows = await _fetch_grouped_item_rows_from_raw(
+            conn,
+            slot=slot,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+            kill_area=kill_area,
+        )
+        if not all_item_rows:
+            return None
+        baseline_rate = _baseline_rate(all_item_rows)
+        total_appearance_count = sum(row["appearance_count"] for row in all_item_rows)
+        item_row = next((row for row in all_item_rows if row["item_type"] == item_type), None)
+        if item_row is None:
+            return None
+
+        build_rows = await _fetch_grouped_build_rows_from_raw(
+            conn,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+            kill_area=kill_area,
+            slot_filter=(slot, item_type),
+        )
+        by_content_type = await _fetch_item_distribution_from_raw(
+            conn,
+            slot=slot,
+            item_type=item_type,
+            group_sql="ec.content_type",
+            key_name="content_type",
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=None,
+            fight_scale=fight_scale,
+            kill_area=kill_area,
+        )
+        by_fight_scale = await _fetch_item_distribution_from_raw(
+            conn,
+            slot=slot,
+            item_type=item_type,
+            group_sql="ec.fight_scale_bucket",
+            key_name="fight_scale",
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=None,
+            kill_area=kill_area,
+        )
+        by_patch = await _fetch_item_distribution_from_raw(
+            conn,
+            slot=slot,
+            item_type=item_type,
+            group_sql="COALESCE(el.patch_id, 0)",
+            key_name="patch_key",
+            days=days,
+            region=region,
+            patch_id=None,
+            content_type=content_type,
+            fight_scale=fight_scale,
+            kill_area=kill_area,
+        )
+
     build_baseline = _baseline_rate(build_rows) if build_rows else 0.5
     build_total_appearance_count = sum(row["appearance_count"] for row in build_rows)
     scored_build_rows = [
@@ -835,46 +955,6 @@ async def fetch_item_detail(
         for row in build_rows
     ]
     top_builds = _sort_build_rows(scored_build_rows)[:5]
-
-    by_content_type = await _fetch_item_distribution_from_raw(
-        conn,
-        slot=slot,
-        item_type=item_type,
-        group_sql="ec.content_type",
-        key_name="content_type",
-        days=days,
-        region=region,
-        patch_id=patch_id,
-        content_type=None,
-        fight_scale=fight_scale,
-        kill_area=kill_area,
-    )
-    by_fight_scale = await _fetch_item_distribution_from_raw(
-        conn,
-        slot=slot,
-        item_type=item_type,
-        group_sql="ec.fight_scale_bucket",
-        key_name="fight_scale",
-        days=days,
-        region=region,
-        patch_id=patch_id,
-        content_type=content_type,
-        fight_scale=None,
-        kill_area=kill_area,
-    )
-    by_patch = await _fetch_item_distribution_from_raw(
-        conn,
-        slot=slot,
-        item_type=item_type,
-        group_sql="COALESCE(el.patch_id, 0)",
-        key_name="patch_key",
-        days=days,
-        region=region,
-        patch_id=None,
-        content_type=content_type,
-        fight_scale=fight_scale,
-        kill_area=kill_area,
-    )
 
     return {
         "slot": slot,
@@ -907,59 +987,110 @@ async def fetch_build_detail(
     fight_scale: str | None,
     kill_area: str | None,
 ) -> dict[str, Any] | None:
-    all_build_rows = await _fetch_grouped_build_rows_from_raw(
-        conn,
-        days=days,
-        region=region,
-        patch_id=patch_id,
-        content_type=content_type,
-        fight_scale=fight_scale,
-        kill_area=kill_area,
-    )
-    if not all_build_rows:
-        return None
-    baseline_rate = _baseline_rate(all_build_rows)
-    total_appearance_count = sum(row["appearance_count"] for row in all_build_rows)
-    build_row = next((row for row in all_build_rows if row["build_key"] == build_key), None)
-    if build_row is None:
-        return None
+    if kill_area is None:
+        all_build_rows = await _fetch_grouped_build_rows_from_aggregates(
+            conn,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+        )
+        if not all_build_rows:
+            return None
+        baseline_rate = _baseline_rate(all_build_rows)
+        total_appearance_count = sum(row["appearance_count"] for row in all_build_rows)
+        build_row = next((row for row in all_build_rows if row["build_key"] == build_key), None)
+        if build_row is None:
+            return None
 
-    by_content_type = await _fetch_build_distribution_from_raw(
-        conn,
-        build_key=build_key,
-        group_sql="ec.content_type",
-        key_name="content_type",
-        days=days,
-        region=region,
-        patch_id=patch_id,
-        content_type=None,
-        fight_scale=fight_scale,
-        kill_area=kill_area,
-    )
-    by_fight_scale = await _fetch_build_distribution_from_raw(
-        conn,
-        build_key=build_key,
-        group_sql="ec.fight_scale_bucket",
-        key_name="fight_scale",
-        days=days,
-        region=region,
-        patch_id=patch_id,
-        content_type=content_type,
-        fight_scale=None,
-        kill_area=kill_area,
-    )
-    by_patch = await _fetch_build_distribution_from_raw(
-        conn,
-        build_key=build_key,
-        group_sql="COALESCE(el.patch_id, 0)",
-        key_name="patch_key",
-        days=days,
-        region=region,
-        patch_id=None,
-        content_type=content_type,
-        fight_scale=fight_scale,
-        kill_area=kill_area,
-    )
+        by_content_type = await _fetch_grouped_build_rows_from_aggregates(
+            conn,
+            build_key=build_key,
+            group_sql="content_type",
+            key_name="content_type",
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=None,
+            fight_scale=fight_scale,
+        )
+        by_fight_scale = await _fetch_grouped_build_rows_from_aggregates(
+            conn,
+            build_key=build_key,
+            group_sql="fight_scale_bucket",
+            key_name="fight_scale",
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=None,
+        )
+        by_patch = await _fetch_grouped_build_rows_from_aggregates(
+            conn,
+            build_key=build_key,
+            group_sql="patch_id",
+            key_name="patch_key",
+            days=days,
+            region=region,
+            patch_id=None,
+            content_type=content_type,
+            fight_scale=fight_scale,
+        )
+    else:
+        all_build_rows = await _fetch_grouped_build_rows_from_raw(
+            conn,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+            kill_area=kill_area,
+        )
+        if not all_build_rows:
+            return None
+        baseline_rate = _baseline_rate(all_build_rows)
+        total_appearance_count = sum(row["appearance_count"] for row in all_build_rows)
+        build_row = next((row for row in all_build_rows if row["build_key"] == build_key), None)
+        if build_row is None:
+            return None
+
+        by_content_type = await _fetch_build_distribution_from_raw(
+            conn,
+            build_key=build_key,
+            group_sql="ec.content_type",
+            key_name="content_type",
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=None,
+            fight_scale=fight_scale,
+            kill_area=kill_area,
+        )
+        by_fight_scale = await _fetch_build_distribution_from_raw(
+            conn,
+            build_key=build_key,
+            group_sql="ec.fight_scale_bucket",
+            key_name="fight_scale",
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=None,
+            kill_area=kill_area,
+        )
+        by_patch = await _fetch_build_distribution_from_raw(
+            conn,
+            build_key=build_key,
+            group_sql="COALESCE(el.patch_id, 0)",
+            key_name="patch_key",
+            days=days,
+            region=region,
+            patch_id=None,
+            content_type=content_type,
+            fight_scale=fight_scale,
+            kill_area=kill_area,
+        )
 
     return {
         "build_key": build_key,

@@ -344,6 +344,10 @@ DDL_STATEMENTS: list[str] = [
     )
     """,
     """
+    CREATE INDEX IF NOT EXISTS idx_daily_item_outcomes_lookup
+    ON daily_item_outcomes (slot, item_type, day DESC)
+    """,
+    """
     CREATE TABLE IF NOT EXISTS daily_build_outcomes (
       day DATE NOT NULL,
       source_region TEXT NOT NULL,
@@ -381,6 +385,14 @@ DDL_STATEMENTS: list[str] = [
       fight_scale_bucket,
       day DESC
     )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_daily_build_outcomes_lookup
+    ON daily_build_outcomes (build_key, day DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_daily_build_outcomes_main_hand_lookup
+    ON daily_build_outcomes ((split_part(build_key, '|', 4)), day DESC)
     """,
     """
     CREATE TABLE IF NOT EXISTS ingestion_cursors (
