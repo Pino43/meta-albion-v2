@@ -30,6 +30,14 @@ BUILD_KEY_SLOT_INDEX: dict[str, int] = {
 }
 
 
+def item_family_key(item_type: str) -> str:
+    base = item_type.split("@", 1)[0]
+    parts = base.split("_", 1)
+    if len(parts) == 2 and parts[0].startswith("T") and parts[0][1:].isdigit():
+        return parts[1]
+    return base
+
+
 @dataclass(frozen=True)
 class OutcomeAggregateResult:
     item_rows: int
@@ -244,6 +252,59 @@ def build_key_slot_value(build_key: str, slot: str) -> str | None:
     return value or None
 
 
+def _merge_metric_rows(rows: list[dict[str, Any]], *, key_name: str, key_value: str) -> dict[str, Any]:
+    avg_item_power_weight = 0
+    avg_item_power_total = 0.0
+    for row in rows:
+        if row["avg_item_power"] is None:
+            continue
+        weight = int(row["appearance_count"] or 0)
+        avg_item_power_weight += weight
+        avg_item_power_total += float(row["avg_item_power"]) * weight
+
+    return {
+        key_name: key_value,
+        "kill_credit": sum(float(row["kill_credit"] or 0.0) for row in rows),
+        "death_count": sum(float(row["death_count"] or 0.0) for row in rows),
+        "appearance_count": sum(int(row["appearance_count"] or 0) for row in rows),
+        "event_count": sum(int(row["event_count"] or 0) for row in rows),
+        "avg_item_power": (
+            avg_item_power_total / avg_item_power_weight if avg_item_power_weight > 0 else None
+        ),
+        "total_kill_fame": sum(int(row["total_kill_fame"] or 0) for row in rows),
+    }
+
+
+def _group_item_rows_by_family(
+    item_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in item_rows:
+        grouped.setdefault(item_family_key(row["item_type"]), []).append(row)
+
+    family_rows: list[dict[str, Any]] = []
+    representative_item_types: dict[str, str] = {}
+    for family_key, rows in grouped.items():
+        representative = max(
+            rows,
+            key=lambda row: (
+                int(row["appearance_count"] or 0),
+                float(row["kill_credit"] or 0.0) + float(row["death_count"] or 0.0),
+                row["item_type"],
+            ),
+        )
+        representative_item_types[family_key] = representative["item_type"]
+        family_rows.append(
+            {
+                **_merge_metric_rows(rows, key_name="family_key", key_value=family_key),
+                "variant_count": len(rows),
+                "representative_item_type": representative["item_type"],
+            }
+        )
+
+    return family_rows, representative_item_types
+
+
 def _coerce_metric_row(row: tuple[Any, ...], key_name: str) -> dict[str, Any]:
     return {
         key_name: row[0],
@@ -374,6 +435,7 @@ async def _fetch_grouped_item_rows_from_aggregates(
     content_type: str | None,
     fight_scale: str | None,
     item_type: str | None = None,
+    item_types: list[str] | None = None,
     group_sql: str = "item_type",
     key_name: str = "item_type",
 ) -> list[dict[str, Any]]:
@@ -387,6 +449,9 @@ async def _fetch_grouped_item_rows_from_aggregates(
     if item_type is not None:
         where.append("item_type = %s")
         params.append(item_type)
+    if item_types is not None:
+        where.append("item_type = ANY(%s)")
+        params.append(item_types)
     params = [lower_day, *params, slot]
     sql = f"""
     SELECT
@@ -418,6 +483,7 @@ async def _fetch_grouped_build_rows_from_aggregates(
     fight_scale: str | None,
     build_key: str | None = None,
     main_hand_item_type: str | None = None,
+    slot_filter: tuple[str, list[str]] | None = None,
     group_sql: str = "build_key",
     key_name: str = "build_key",
 ) -> list[dict[str, Any]]:
@@ -434,6 +500,11 @@ async def _fetch_grouped_build_rows_from_aggregates(
     if main_hand_item_type is not None:
         where.append("split_part(build_key, '|', 4) = %s")
         params.append(main_hand_item_type)
+    if slot_filter is not None:
+        slot, item_types = slot_filter
+        index = BUILD_KEY_SLOT_INDEX[slot] + 1
+        where.append(f"split_part(build_key, '|', {index}) = ANY(%s)")
+        params.append(item_types)
     params = [lower_day, *params]
     sql = f"""
     SELECT
@@ -465,6 +536,9 @@ async def _fetch_grouped_item_rows_from_raw(
     fight_scale: str | None,
     kill_area: str | None,
     item_type: str | None = None,
+    item_types: list[str] | None = None,
+    group_sql: str = "item_type",
+    key_name: str = "item_type",
 ) -> list[dict[str, Any]]:
     lower_day = utc_day_lower_bound(days)
     column = SLOT_TO_COLUMN[slot]
@@ -480,9 +554,13 @@ async def _fetch_grouped_item_rows_from_raw(
     if item_type is not None:
         where.append(f"el.{column} = %s")
         params.append(item_type)
+    if item_types is not None:
+        where.append(f"el.{column} = ANY(%s)")
+        params.append(item_types)
+    selected_group_sql = f"el.{column}" if group_sql == "item_type" else group_sql
     sql = f"""
     SELECT
-      el.{column} AS item_type,
+      {selected_group_sql} AS group_key,
       SUM(
         CASE
           WHEN el.perspective = 'victim' THEN 0.0
@@ -504,7 +582,7 @@ async def _fetch_grouped_item_rows_from_raw(
     async with conn.cursor() as cur:
         await cur.execute(sql, params)
         rows = await cur.fetchall()
-    return [_coerce_metric_row(row, "item_type") for row in rows]
+    return [_coerce_metric_row(row, key_name) for row in rows]
 
 
 async def _fetch_grouped_build_rows_from_raw(
@@ -518,6 +596,7 @@ async def _fetch_grouped_build_rows_from_raw(
     kill_area: str | None,
     build_key: str | None = None,
     slot_filter: tuple[str, str] | None = None,
+    slot_filter_any: tuple[str, list[str]] | None = None,
 ) -> list[dict[str, Any]]:
     lower_day = utc_day_lower_bound(days)
     where, params = _raw_filter_sql(
@@ -537,6 +616,11 @@ async def _fetch_grouped_build_rows_from_raw(
         column = SLOT_TO_COLUMN[slot]
         where.append(f"el.{column} = %s")
         params.append(item_type)
+    if slot_filter_any is not None:
+        slot, item_types = slot_filter_any
+        column = SLOT_TO_COLUMN[slot]
+        where.append(f"el.{column} = ANY(%s)")
+        params.append(item_types)
     sql = f"""
     SELECT
       el.build_key,
@@ -784,6 +868,59 @@ async def fetch_main_hand_leaderboard(
     return _sort_leaderboard_rows(filtered)[:limit]
 
 
+async def fetch_slot_family_leaderboard(
+    conn: psycopg.AsyncConnection,
+    *,
+    slot: str,
+    days: int,
+    region: str | None,
+    patch_id: int | None,
+    content_type: str | None,
+    fight_scale: str | None,
+    kill_area: str | None,
+    limit: int,
+    min_sample: int,
+) -> list[dict[str, Any]]:
+    if kill_area is None:
+        item_rows = await _fetch_grouped_item_rows_from_aggregates(
+            conn,
+            slot=slot,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+        )
+    else:
+        item_rows = await _fetch_grouped_item_rows_from_raw(
+            conn,
+            slot=slot,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+            kill_area=kill_area,
+        )
+
+    if not item_rows:
+        return []
+
+    family_rows, _ = _group_item_rows_by_family(item_rows)
+    baseline_rate = _baseline_rate(family_rows)
+    total_appearance_count = sum(row["appearance_count"] for row in family_rows)
+    scored_rows = [
+        _scored_row(
+            row,
+            baseline_rate=baseline_rate,
+            total_appearance_count=total_appearance_count,
+        )
+        for row in family_rows
+    ]
+    filtered = [row for row in scored_rows if row["sample"] >= min_sample]
+    return _sort_leaderboard_rows(filtered)[:limit]
+
+
 def _by_patch_distribution_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     distributions: list[dict[str, Any]] = []
     for row in rows:
@@ -972,6 +1109,143 @@ async def fetch_item_detail(
         "builds": {
             "representative_build": top_builds[0] if top_builds else None,
             "top_builds": top_builds,
+        },
+    }
+
+
+async def fetch_item_family_detail(
+    conn: psycopg.AsyncConnection,
+    *,
+    slot: str,
+    family_key: str,
+    days: int,
+    region: str | None,
+    patch_id: int | None,
+    content_type: str | None,
+    fight_scale: str | None,
+    kill_area: str | None,
+) -> dict[str, Any] | None:
+    if kill_area is None:
+        all_item_rows = await _fetch_grouped_item_rows_from_aggregates(
+            conn,
+            slot=slot,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+        )
+    else:
+        all_item_rows = await _fetch_grouped_item_rows_from_raw(
+            conn,
+            slot=slot,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+            kill_area=kill_area,
+        )
+
+    if not all_item_rows:
+        return None
+
+    family_rows, representative_item_types = _group_item_rows_by_family(all_item_rows)
+    family_row = next((row for row in family_rows if row["family_key"] == family_key), None)
+    if family_row is None:
+        return None
+
+    family_item_rows = [row for row in all_item_rows if item_family_key(row["item_type"]) == family_key]
+    family_item_types = [row["item_type"] for row in family_item_rows]
+    family_baseline = _baseline_rate(family_rows)
+    family_total_appearance_count = sum(row["appearance_count"] for row in family_rows)
+    variant_baseline = _baseline_rate(all_item_rows)
+    variant_total_appearance_count = sum(row["appearance_count"] for row in all_item_rows)
+
+    if kill_area is None:
+        build_rows = await _fetch_grouped_build_rows_from_aggregates(
+            conn,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+            slot_filter=(slot, family_item_types),
+        )
+        by_fight_scale = await _fetch_grouped_item_rows_from_aggregates(
+            conn,
+            slot=slot,
+            item_types=family_item_types,
+            group_sql="fight_scale_bucket",
+            key_name="fight_scale",
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=None,
+        )
+    else:
+        build_rows = await _fetch_grouped_build_rows_from_raw(
+            conn,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=fight_scale,
+            kill_area=kill_area,
+            slot_filter_any=(slot, family_item_types),
+        )
+        by_fight_scale = await _fetch_grouped_item_rows_from_raw(
+            conn,
+            slot=slot,
+            days=days,
+            region=region,
+            patch_id=patch_id,
+            content_type=content_type,
+            fight_scale=None,
+            kill_area=kill_area,
+            item_types=family_item_types,
+            group_sql="ec.fight_scale_bucket",
+            key_name="fight_scale",
+        )
+
+    build_baseline = _baseline_rate(build_rows) if build_rows else 0.5
+    build_total_appearance_count = sum(row["appearance_count"] for row in build_rows)
+    scored_build_rows = [
+        {
+            **_scored_row(
+                row,
+                baseline_rate=build_baseline,
+                total_appearance_count=build_total_appearance_count,
+            ),
+            "components": parse_build_key(row["build_key"]),
+        }
+        for row in build_rows
+    ]
+    variants = [
+        _scored_row(
+            row,
+            baseline_rate=variant_baseline,
+            total_appearance_count=variant_total_appearance_count,
+        )
+        for row in family_item_rows
+    ]
+
+    return {
+        "slot": slot,
+        "family_key": family_key,
+        "representative_item_type": representative_item_types[family_key],
+        "summary": _scored_row(
+            family_row,
+            baseline_rate=family_baseline,
+            total_appearance_count=family_total_appearance_count,
+        ),
+        "variants": _sort_build_rows(variants),
+        "distributions": {
+            "by_fight_scale": [_distribution_row(row) for row in by_fight_scale],
+        },
+        "builds": {
+            "top_builds": _sort_build_rows(scored_build_rows)[:5],
         },
     }
 

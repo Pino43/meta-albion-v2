@@ -14,8 +14,8 @@ describe('filters', () => {
     const filters = {
       days: 14,
       region: 'asia' as const,
-      patchId: 3,
-      contentType: 'open_world' as const,
+      patchId: null,
+      contentType: 'all' as const,
       fightScale: 'duo' as const,
       limit: 50,
       minSample: 100
@@ -38,12 +38,11 @@ describe('filters', () => {
     const filters = {
       ...defaultFilters(),
       region: 'europe' as const,
-      contentType: 'open_world' as const,
       fightScale: 'small_party' as const
     };
 
     expect(summarizeFilters(filters)).toContain('7d window');
     expect(summarizeFilters(filters)).toContain('Europe');
-    expect(summarizeFilters(filters)).toContain('Open world');
+    expect(summarizeFilters(filters)).toContain('small party');
   });
 });

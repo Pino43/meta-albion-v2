@@ -78,6 +78,12 @@ export type MainHandLeaderboardRow = OutcomeMetrics & {
   top_build_key: string | null;
 };
 
+export type ItemFamilyLeaderboardRow = OutcomeMetrics & {
+  family_key: string;
+  representative_item_type: string;
+  variant_count: number;
+};
+
 export type BuildSummary = OutcomeMetrics & {
   build_key: string;
   components?: BuildComponents;
@@ -112,6 +118,24 @@ export type BuildDetail = {
     by_content_type: DistributionRow[];
     by_fight_scale: DistributionRow[];
     by_patch: DistributionRow[];
+  };
+};
+
+export type ItemFamilyDetail = {
+  slot: string;
+  family_key: string;
+  representative_item_type: string;
+  summary: OutcomeMetrics;
+  variants: Array<
+    OutcomeMetrics & {
+      item_type: string;
+    }
+  >;
+  distributions: {
+    by_fight_scale: DistributionRow[];
+  };
+  builds: {
+    top_builds: BuildSummary[];
   };
 };
 
@@ -186,6 +210,18 @@ export function fetchLeaderboard(
   return fetchJson('/v1/leaderboards/main-hands', buildLeaderboardQuery(filters), fetcher);
 }
 
+export function fetchItemFamilyLeaderboard(
+  slot: string,
+  filters: LeaderboardFilters,
+  fetcher: typeof fetch = fetch
+): Promise<ApiResponse<ItemFamilyLeaderboardRow[]>> {
+  return fetchJson(
+    `/v1/leaderboards/items/${encodeURIComponent(slot)}`,
+    buildLeaderboardQuery(filters),
+    fetcher
+  );
+}
+
 export function fetchItemDetail(
   slot: string,
   itemType: string,
@@ -206,6 +242,19 @@ export function fetchBuildDetail(
 ): Promise<ApiResponse<BuildDetail>> {
   return fetchJson(
     `/v1/builds/${encodeURIComponent(buildKey)}`,
+    buildDetailQuery(filters),
+    fetcher
+  );
+}
+
+export function fetchItemFamilyDetail(
+  slot: string,
+  familyKey: string,
+  filters: DetailFilters,
+  fetcher: typeof fetch = fetch
+): Promise<ApiResponse<ItemFamilyDetail>> {
+  return fetchJson(
+    `/v1/families/${encodeURIComponent(slot)}/${encodeURIComponent(familyKey)}`,
     buildDetailQuery(filters),
     fetcher
   );

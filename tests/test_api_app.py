@@ -353,6 +353,59 @@ def test_main_hand_leaderboard_passes_filters_to_reader() -> None:
     assert response.json()["data"] == [{"item_type": "T8_MAIN_SWORD", "adjusted_score": 0.1}]
 
 
+def test_slot_family_leaderboard_passes_filters_to_reader() -> None:
+    client = make_client()
+    seen: dict[str, Any] = {}
+
+    async def fake_slot_leaderboard(
+        _conn: FakeConnection,
+        *,
+        slot: str,
+        days: int,
+        region: str | None,
+        patch_id: int | None,
+        content_type: str | None,
+        fight_scale: str | None,
+        kill_area: str | None,
+        limit: int,
+        min_sample: int,
+    ) -> list[dict[str, Any]]:
+        seen.update(
+            {
+                "slot": slot,
+                "days": days,
+                "region": region,
+                "patch_id": patch_id,
+                "content_type": content_type,
+                "fight_scale": fight_scale,
+                "kill_area": kill_area,
+                "limit": limit,
+                "min_sample": min_sample,
+            }
+        )
+        return [{"family_key": "MAIN_SWORD", "representative_item_type": "T4_MAIN_SWORD"}]
+
+    client.app.state.fetch_slot_family_leaderboard = fake_slot_leaderboard
+
+    response = client.get(
+        "/v1/leaderboards/items/head?days=14&region=asia&fight_scale=party&limit=10&min_sample=50"
+    )
+
+    assert response.status_code == 200
+    assert seen == {
+        "slot": "head",
+        "days": 14,
+        "region": "asia",
+        "patch_id": None,
+        "content_type": None,
+        "fight_scale": "party",
+        "kill_area": None,
+        "limit": 10,
+        "min_sample": 50,
+    }
+    assert response.json()["data"][0]["family_key"] == "MAIN_SWORD"
+
+
 def test_item_detail_validates_slot_and_returns_404_when_missing() -> None:
     client = make_client()
 
@@ -374,6 +427,56 @@ def test_item_detail_validates_slot_and_returns_404_when_missing() -> None:
 
     assert client.get("/v1/items/bad/T8_MAIN_SWORD").status_code == 422
     assert client.get("/v1/items/main_hand/T8_MAIN_SWORD").status_code == 404
+
+
+def test_item_family_detail_passes_filters_to_reader() -> None:
+    client = make_client()
+    seen: dict[str, Any] = {}
+
+    async def fake_family_detail(
+        _conn: FakeConnection,
+        *,
+        slot: str,
+        family_key: str,
+        days: int,
+        region: str | None,
+        patch_id: int | None,
+        content_type: str | None,
+        fight_scale: str | None,
+        kill_area: str | None,
+    ) -> dict[str, Any] | None:
+        seen.update(
+            {
+                "slot": slot,
+                "family_key": family_key,
+                "days": days,
+                "region": region,
+                "patch_id": patch_id,
+                "content_type": content_type,
+                "fight_scale": fight_scale,
+                "kill_area": kill_area,
+            }
+        )
+        return {"slot": slot, "family_key": family_key, "summary": {"sample": 20}}
+
+    client.app.state.fetch_item_family_detail = fake_family_detail
+
+    response = client.get(
+        "/v1/families/main_hand/MAIN_SWORD?days=7&region=europe&fight_scale=solo"
+    )
+
+    assert response.status_code == 200
+    assert seen == {
+        "slot": "main_hand",
+        "family_key": "MAIN_SWORD",
+        "days": 7,
+        "region": "europe",
+        "patch_id": None,
+        "content_type": None,
+        "fight_scale": "solo",
+        "kill_area": None,
+    }
+    assert response.json()["data"]["family_key"] == "MAIN_SWORD"
 
 
 def test_build_detail_passes_filters_to_reader() -> None:

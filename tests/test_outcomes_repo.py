@@ -3,6 +3,7 @@ from albion_analytics.storage.outcomes_repo import (
     _confidence_label,
     _scored_row,
     build_key_slot_value,
+    item_family_key,
     parse_build_key,
 )
 
@@ -61,3 +62,8 @@ def test_confidence_label_uses_fixed_buckets() -> None:
     assert _confidence_label(0) == "low"
     assert _confidence_label(25) == "medium"
     assert _confidence_label(100) == "high"
+
+
+def test_item_family_key_strips_tier_and_enchantment() -> None:
+    assert item_family_key("T7_2H_AXE_AVALON@3") == "2H_AXE_AVALON"
+    assert item_family_key("T4_MAIN_SWORD") == "MAIN_SWORD"

@@ -39,8 +39,8 @@ export function draftFromFilters(value: LeaderboardFilters): FilterDraft {
   return {
     days: value.days,
     region: value.region,
-    patchIdInput: value.patchId === null ? '' : String(value.patchId),
-    contentType: value.contentType,
+    patchIdInput: '',
+    contentType: 'all',
     fightScale: value.fightScale,
     limit: value.limit,
     minSample: value.minSample
@@ -52,8 +52,8 @@ export function filtersFromParams(params: URLSearchParams): LeaderboardFilters {
   return {
     days: parseNumberChoice(params.get('days'), dayOptions, fallback.days),
     region: parseChoice(params.get('region'), regions, fallback.region),
-    patchId: parsePatchId(params.get('patch_id') ?? ''),
-    contentType: parseChoice(params.get('content_type'), contentTypes, fallback.contentType),
+    patchId: null,
+    contentType: 'all',
     fightScale: parseChoice(params.get('fight_scale'), fightScales, fallback.fightScale),
     limit: parseNumberChoice(params.get('limit'), limitOptions, fallback.limit),
     minSample: parseNumberChoice(params.get('min_sample'), minSampleOptions, fallback.minSample)
@@ -64,8 +64,8 @@ export function applyDraft(value: FilterDraft): LeaderboardFilters {
   return {
     days: value.days,
     region: value.region,
-    patchId: parsePatchId(value.patchIdInput),
-    contentType: value.contentType,
+    patchId: null,
+    contentType: 'all',
     fightScale: value.fightScale,
     limit: value.limit,
     minSample: value.minSample
@@ -87,8 +87,6 @@ export function filtersToParams(value: LeaderboardFilters): URLSearchParams {
   const params = new URLSearchParams();
   params.set('days', String(value.days));
   if (value.region !== 'all') params.set('region', value.region);
-  if (value.patchId !== null) params.set('patch_id', String(value.patchId));
-  if (value.contentType !== 'all') params.set('content_type', value.contentType);
   if (value.fightScale !== 'all') params.set('fight_scale', value.fightScale);
   if (value.limit !== fallback.limit) params.set('limit', String(value.limit));
   if (value.minSample !== fallback.minSample) params.set('min_sample', String(value.minSample));
@@ -96,14 +94,9 @@ export function filtersToParams(value: LeaderboardFilters): URLSearchParams {
 }
 
 export function summarizeFilters(value: LeaderboardFilters): string {
-  const labels = [
-    `${value.days}d window`,
-    regionLabel(value.region),
-    contentTypeLabel(value.contentType),
-    fightScaleLabel(value.fightScale)
-  ];
-  if (value.patchId !== null) labels.push(`Patch ${value.patchId}`);
-  return labels.join(' / ');
+  return [`${value.days}d window`, regionLabel(value.region), fightScaleLabel(value.fightScale)].join(
+    ' / '
+  );
 }
 
 export function regionLabel(value: Region): string {

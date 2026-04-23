@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mainItemFromBuildKey, parseItemType } from './item';
+import { familyKeyFromItemType, labelForFamilyKey, mainItemFromBuildKey, parseItemType } from './item';
 
 describe('parseItemType', () => {
   it('extracts tier and enchantment from Albion item ids', () => {
@@ -27,5 +27,16 @@ describe('mainItemFromBuildKey', () => {
     expect(mainItemFromBuildKey('head|armor|shoes|T4_MAIN_SWORD|offhand|cape')).toBe(
       'T4_MAIN_SWORD'
     );
+  });
+});
+
+describe('family item helpers', () => {
+  it('collapses tier and enchantment into a family key', () => {
+    expect(familyKeyFromItemType('T7_2H_AXE_AVALON@3')).toBe('2H_AXE_AVALON');
+  });
+
+  it('turns a family key into a readable label', () => {
+    expect(labelForFamilyKey('MAIN_SWORD')).toBe('Broadsword');
+    expect(labelForFamilyKey('2H_AXE_AVALON')).toBe('2H Axe Avalonian');
   });
 });

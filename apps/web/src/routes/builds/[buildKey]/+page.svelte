@@ -5,7 +5,6 @@
   import { fetchBuildDetail, type BuildComponents, type BuildDetail, type DistributionRow, type LeaderboardFilters } from '$lib/api';
   import {
     applyDraft,
-    contentTypeLabel,
     dayOptions,
     defaultFilters,
     detailFiltersFrom,
@@ -23,8 +22,8 @@
     formatPercent,
     formatSignedPercent
   } from '$lib/format';
-  import { itemImageUrl, mainItemFromBuildKey, parseItemType } from '$lib/item';
-  import { contentTypes, fightScales, regions } from '$lib/api';
+  import { familyKeyFromItemType, itemImageUrl, mainItemFromBuildKey, parseItemType } from '$lib/item';
+  import { fightScales, regions } from '$lib/api';
 
   type LoadState = 'loading' | 'ready' | 'error';
   type ComponentView = {
@@ -110,7 +109,7 @@
   function itemHref(itemType: string | null): string | null {
     if (!itemType) return null;
     const params = filtersToParams(filters).toString();
-    return `/items/main_hand/${encodeURIComponent(itemType)}${params ? `?${params}` : ''}`;
+    return `/families/main_hand/${encodeURIComponent(familyKeyFromItemType(itemType))}${params ? `?${params}` : ''}`;
   }
 
   function metricsFor(summary: BuildDetail['summary']) {
@@ -124,17 +123,8 @@
     ];
   }
 
-  function distributionLabel(row: DistributionRow, kind: 'content' | 'scale' | 'patch'): string {
-    if (kind === 'content') {
-      return contentTypeLabel((row.content_type as typeof contentTypes[number] | undefined) ?? 'unknown');
-    }
-    if (kind === 'scale') {
-      return fightScaleLabel((row.fight_scale as typeof fightScales[number] | undefined) ?? 'unknown');
-    }
-    if (row.patch_id === null || row.patch_id === undefined) {
-      return 'Unpatched';
-    }
-    return `Patch ${row.patch_id}`;
+  function distributionLabel(row: DistributionRow): string {
+    return fightScaleLabel((row.fight_scale as typeof fightScales[number] | undefined) ?? 'unknown');
   }
 
   function buildComponents(components: BuildComponents): ComponentView[] {
@@ -199,26 +189,12 @@
       </label>
 
       <label>
-        Content
-        <select bind:value={draft.contentType}>
-          {#each contentTypes as option}
-            <option value={option}>{contentTypeLabel(option)}</option>
-          {/each}
-        </select>
-      </label>
-
-      <label>
         Scale
         <select bind:value={draft.fightScale}>
           {#each fightScales as option}
             <option value={option}>{fightScaleLabel(option)}</option>
           {/each}
         </select>
-      </label>
-
-      <label>
-        Patch
-        <input bind:value={draft.patchIdInput} inputmode="numeric" placeholder="Any" />
       </label>
 
       <div class="filter-actions">
@@ -276,61 +252,22 @@
       <div class="section-head">
         <div>
           <p class="eyebrow">Distribution</p>
-          <h2>Context split</h2>
+          <h2>Fight scale split</h2>
         </div>
       </div>
 
-      <div class="distribution-grid">
-        <div>
-          <h3>Content</h3>
-          <div class="distribution-list">
-            {#each detail.distributions.by_content_type as row}
-              <div class="distribution-row">
-                <div class="distribution-copy">
-                  <strong>{distributionLabel(row, 'content')}</strong>
-                  <span>{formatPercent(row.kill_side_rate)} / {formatCompact(row.sample)} sample</span>
-                </div>
-                <div class="bar-track">
-                  <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
-                </div>
-              </div>
-            {/each}
+      <div class="distribution-list">
+        {#each detail.distributions.by_fight_scale as row}
+          <div class="distribution-row">
+            <div class="distribution-copy">
+              <strong>{distributionLabel(row)}</strong>
+              <span>{formatPercent(row.kill_side_rate)} / {formatCompact(row.sample)} sample</span>
+            </div>
+            <div class="bar-track">
+              <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
+            </div>
           </div>
-        </div>
-
-        <div>
-          <h3>Scale</h3>
-          <div class="distribution-list">
-            {#each detail.distributions.by_fight_scale as row}
-              <div class="distribution-row">
-                <div class="distribution-copy">
-                  <strong>{distributionLabel(row, 'scale')}</strong>
-                  <span>{formatPercent(row.kill_side_rate)} / {formatCompact(row.sample)} sample</span>
-                </div>
-                <div class="bar-track">
-                  <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
-                </div>
-              </div>
-            {/each}
-          </div>
-        </div>
-
-        <div>
-          <h3>Patch</h3>
-          <div class="distribution-list">
-            {#each detail.distributions.by_patch as row}
-              <div class="distribution-row">
-                <div class="distribution-copy">
-                  <strong>{distributionLabel(row, 'patch')}</strong>
-                  <span>{formatPercent(row.kill_side_rate)} / {formatCompact(row.sample)} sample</span>
-                </div>
-                <div class="bar-track">
-                  <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
-                </div>
-              </div>
-            {/each}
-          </div>
-        </div>
+        {/each}
       </div>
     </section>
   {/if}
@@ -372,7 +309,6 @@
 
   h1,
   h2,
-  h3,
   p,
   dl,
   dt,
@@ -384,7 +320,7 @@
     display: grid;
     gap: 12px;
     margin: 0 auto;
-    max-width: 1280px;
+    max-width: var(--page-width);
     padding: 18px 14px 24px;
   }
 
@@ -406,7 +342,6 @@
   .surface {
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 4px;
     padding: 14px;
   }
 
@@ -461,7 +396,7 @@
     align-items: end;
     display: grid;
     gap: 10px;
-    grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
   }
 
   label {
@@ -469,11 +404,9 @@
     gap: 5px;
   }
 
-  input,
   select {
     background: var(--surface-muted);
     border: 1px solid var(--line);
-    border-radius: 4px;
     color: var(--text);
     min-height: 34px;
     padding: 0 10px;
@@ -487,7 +420,6 @@
 
   .primary-button,
   .secondary-button {
-    border-radius: 4px;
     cursor: pointer;
     font-size: 12px;
     font-weight: 700;
@@ -572,7 +504,6 @@
   .component-tile {
     background: var(--surface-muted);
     border: 1px solid var(--line);
-    border-radius: 4px;
     display: grid;
     gap: 6px;
     justify-items: start;
@@ -583,17 +514,10 @@
   .component-tile img {
     background: #f1eee7;
     border: 1px solid var(--line);
-    border-radius: 4px;
     height: 42px;
     object-fit: contain;
     padding: 3px;
     width: 42px;
-  }
-
-  .distribution-grid {
-    display: grid;
-    gap: 12px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .distribution-row {
@@ -610,7 +534,6 @@
 
   .bar-track {
     background: #ece7dc;
-    border-radius: 2px;
     height: 8px;
     overflow: hidden;
   }
@@ -623,7 +546,6 @@
 
   @media (max-width: 980px) {
     .content-grid,
-    .distribution-grid,
     .metric-strip,
     .toolbar-grid,
     .component-grid {

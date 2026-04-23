@@ -27,7 +27,9 @@ from albion_analytics.storage.aggregates_repo import (
 from albion_analytics.storage.outcomes_repo import (
     fetch_build_detail,
     fetch_item_detail,
+    fetch_item_family_detail,
     fetch_main_hand_leaderboard,
+    fetch_slot_family_leaderboard,
 )
 from albion_analytics.storage.status_repo import (
     CORE_STATUS_TABLES,
@@ -247,7 +249,9 @@ def create_app(
     app.state.fetch_build_rankings = fetch_build_rankings
     app.state.fetch_main_hand_leaderboard = fetch_main_hand_leaderboard
     app.state.fetch_item_detail = fetch_item_detail
+    app.state.fetch_item_family_detail = fetch_item_family_detail
     app.state.fetch_build_detail = fetch_build_detail
+    app.state.fetch_slot_family_leaderboard = fetch_slot_family_leaderboard
 
     @app.middleware("http")
     async def rate_limit(request: Request, call_next: Callable[[Request], Awaitable[Any]]) -> Any:
@@ -418,6 +422,69 @@ def create_app(
             ),
         }
 
+    @app.get("/v1/leaderboards/items/{slot}")
+    async def slot_family_leaderboard(
+        request: Request,
+        slot: str,
+        days: Annotated[int, Query(ge=1, le=90)] = 14,
+        region: Region | None = None,
+        patch_id: Annotated[int | None, Query(ge=0)] = None,
+        content_type: ContentType | None = None,
+        fight_scale: FightScale | None = None,
+        kill_area: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+        min_sample: Annotated[int, Query(ge=0, le=10000)] = 25,
+    ) -> dict[str, Any]:
+        slot = _validate_slot(slot)
+        normalized_kill_area = normalize_kill_area_slug(kill_area) if kill_area else None
+
+        async def load_rows() -> list[dict[str, Any]]:
+            async with _db_connection(request) as conn:
+                return await request.app.state.fetch_slot_family_leaderboard(
+                    conn,
+                    slot=slot,
+                    days=days,
+                    region=region,
+                    patch_id=patch_id,
+                    content_type=content_type,
+                    fight_scale=fight_scale,
+                    kill_area=normalized_kill_area,
+                    limit=limit,
+                    min_sample=min_sample,
+                )
+
+        rows = await request.app.state.cache.get_or_set(
+            (
+                "leaderboard",
+                "slot_families",
+                slot,
+                days,
+                region,
+                patch_id,
+                content_type,
+                fight_scale,
+                normalized_kill_area,
+                limit,
+                min_sample,
+            ),
+            load_rows,
+        )
+        return {
+            "data": rows,
+            "meta": _ranking_meta(
+                settings=request.app.state.settings,
+                slot=slot,
+                days=days,
+                region=region,
+                patch_id=patch_id,
+                content_type=content_type,
+                fight_scale=fight_scale,
+                kill_area=normalized_kill_area,
+                limit=limit,
+                min_sample=min_sample,
+            ),
+        }
+
     @app.get("/v1/items/{slot}/{item_type}")
     async def item_detail(
         request: Request,
@@ -524,6 +591,65 @@ def create_app(
             "meta": _ranking_meta(
                 settings=request.app.state.settings,
                 build_key=build_key,
+                days=days,
+                region=region,
+                patch_id=patch_id,
+                content_type=content_type,
+                fight_scale=fight_scale,
+                kill_area=normalized_kill_area,
+            ),
+        }
+
+    @app.get("/v1/families/{slot}/{family_key}")
+    async def item_family_detail(
+        request: Request,
+        slot: str,
+        family_key: str,
+        days: Annotated[int, Query(ge=1, le=90)] = 14,
+        region: Region | None = None,
+        patch_id: Annotated[int | None, Query(ge=0)] = None,
+        content_type: ContentType | None = None,
+        fight_scale: FightScale | None = None,
+        kill_area: str | None = None,
+    ) -> dict[str, Any]:
+        slot = _validate_slot(slot)
+        normalized_kill_area = normalize_kill_area_slug(kill_area) if kill_area else None
+
+        async def load_family() -> dict[str, Any] | None:
+            async with _db_connection(request) as conn:
+                return await request.app.state.fetch_item_family_detail(
+                    conn,
+                    slot=slot,
+                    family_key=family_key,
+                    days=days,
+                    region=region,
+                    patch_id=patch_id,
+                    content_type=content_type,
+                    fight_scale=fight_scale,
+                    kill_area=normalized_kill_area,
+                )
+
+        data = await request.app.state.cache.get_or_set(
+            (
+                "item_family_detail",
+                slot,
+                family_key,
+                days,
+                region,
+                patch_id,
+                content_type,
+                fight_scale,
+                normalized_kill_area,
+            ),
+            load_family,
+        )
+        if data is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        return {
+            "data": data,
+            "meta": _ranking_meta(
+                settings=request.app.state.settings,
+                slot=slot,
                 days=days,
                 region=region,
                 patch_id=patch_id,
