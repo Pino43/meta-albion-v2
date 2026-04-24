@@ -44,6 +44,14 @@ def test_battle_context_upsert_is_idempotent_sql() -> None:
     assert "player_count = EXCLUDED.player_count" in source
 
 
+def test_pending_battle_refs_only_uses_classified_event_contexts() -> None:
+    source = inspect.getsource(battle_contexts_repo.fetch_pending_battle_refs)
+
+    assert "FROM event_contexts ec" in source
+    assert "JOIN kill_events ke" in source
+    assert "ec.scale_source IS DISTINCT FROM 'battle_players'" in source
+
+
 def test_battle_context_application_updates_scale_columns() -> None:
     source = inspect.getsource(battle_contexts_repo.apply_battle_contexts_to_event_contexts)
 
@@ -52,3 +60,10 @@ def test_battle_context_application_updates_scale_columns() -> None:
     assert "WHEN bc.player_count <= 10 THEN 'party'" in source
     assert "WHEN bc.player_count <= 20 THEN 'large_party'" in source
     assert "ELSE 'zvz'" in source
+
+
+def test_event_participant_scale_source_backfill_is_null_only() -> None:
+    source = inspect.getsource(battle_contexts_repo.backfill_event_participant_scale_source)
+
+    assert "SET scale_source = 'event_participants'" in source
+    assert "WHERE scale_source IS NULL" in source

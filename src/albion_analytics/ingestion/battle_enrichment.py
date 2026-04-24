@@ -13,6 +13,7 @@ from albion_analytics.regions import GAMEINFO_REGIONS
 from albion_analytics.storage.battle_contexts_repo import (
     BattleContext,
     apply_battle_contexts_to_event_contexts,
+    backfill_event_participant_scale_source,
     fetch_pending_battle_refs,
     parse_battle_context,
     upsert_battle_contexts,
@@ -49,6 +50,7 @@ async def enrich_battle_contexts(
     if candidate_limit <= 0 or request_limit <= 0:
         return BattleEnrichmentResult(0, 0, 0, 0, 0, 0, 0)
 
+    await backfill_event_participant_scale_source(conn)
     candidates = await fetch_pending_battle_refs(conn, limit=candidate_limit)
     selected = candidates[:request_limit]
     rows: list[BattleContext] = []

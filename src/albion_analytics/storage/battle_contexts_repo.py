@@ -96,11 +96,15 @@ async def fetch_pending_battle_refs(
             """
             WITH valid_events AS (
               SELECT
-                source_region,
-                (raw_json->>'BattleId')::bigint AS battle_id,
-                time_stamp
-              FROM kill_events
-              WHERE NULLIF(raw_json->>'BattleId', '') ~ '^[0-9]+$'
+                ec.source_region,
+                (ke.raw_json->>'BattleId')::bigint AS battle_id,
+                ec.time_stamp
+              FROM event_contexts ec
+              JOIN kill_events ke
+                ON ke.source_region = ec.source_region
+               AND ke.event_id = ec.event_id
+              WHERE NULLIF(ke.raw_json->>'BattleId', '') ~ '^[0-9]+$'
+                AND ec.scale_source IS DISTINCT FROM 'battle_players'
             ),
             candidates AS (
               SELECT
@@ -221,6 +225,20 @@ async def apply_battle_contexts_to_event_contexts(conn: psycopg.AsyncConnection)
                 OR ec.fight_scale_bucket IS DISTINCT FROM eb.fight_scale_bucket
                 OR ec.scale_source IS DISTINCT FROM 'battle_players'
               )
+            """
+        )
+        updated = cur.rowcount or 0
+    await conn.commit()
+    return updated
+
+
+async def backfill_event_participant_scale_source(conn: psycopg.AsyncConnection) -> int:
+    async with conn.cursor() as cur:
+        await cur.execute(
+            """
+            UPDATE event_contexts
+            SET scale_source = 'event_participants'
+            WHERE scale_source IS NULL
             """
         )
         updated = cur.rowcount or 0
