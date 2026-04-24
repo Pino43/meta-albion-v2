@@ -48,6 +48,8 @@ def test_build_event_context_falls_back_to_observed_participant_count() -> None:
     assert context.observed_kill_side_count == 2
     assert context.reported_participant_count == 2
     assert context.fight_scale_bucket == "duo"
+    assert context.battle_player_count is None
+    assert context.scale_source == "event_participants"
 
 
 def test_build_event_context_uses_open_world_content_type() -> None:

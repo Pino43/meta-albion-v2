@@ -60,6 +60,8 @@ class EventContext:
     fight_scale_bucket: FightScaleBucket
     reported_participant_count: int | None
     observed_kill_side_count: int
+    battle_player_count: int | None = None
+    scale_source: str = "event_participants"
     classifier_version: int = EVENT_CONTEXT_CLASSIFIER_VERSION
 
 

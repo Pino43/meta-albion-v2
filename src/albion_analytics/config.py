@@ -27,9 +27,12 @@ class Settings(BaseSettings):
     collect_poll_interval_sec: float = 60.0
     collect_error_backoff_sec: float = 30.0
     collect_normalize_after_round: bool = True
+    collect_enrich_battles_after_round: bool = True
     collect_aggregate_after_round: bool = True
     collect_retention_after_round: bool = True
     normalize_batch_size: int = 1000
+    battle_enrichment_batch_size: int = 100
+    battle_enrichment_max_requests_per_round: int = 50
     aggregate_lookback_days: int = 3
     raw_events_retention_days: int = 10
     daily_aggregate_retention_days: int = 90

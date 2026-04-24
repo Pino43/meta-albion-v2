@@ -12,6 +12,7 @@ import time
 import psycopg
 
 from albion_analytics.config import get_settings
+from albion_analytics.ingestion.battle_enrichment import enrich_battle_contexts
 from albion_analytics.ingestion.event_feed import collect_events_round
 from albion_analytics.storage.aggregates_repo import aggregate_daily_usage
 from albion_analytics.storage.db import connect_database
@@ -91,6 +92,16 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
                         conn,
                         limit=s.normalize_batch_size,
                     )
+                enriched_battles = 0
+                battle_context_events_updated = 0
+                if s.collect_enrich_battles_after_round:
+                    battle_result = await enrich_battle_contexts(
+                        conn,
+                        batch_size=s.battle_enrichment_batch_size,
+                        max_requests=s.battle_enrichment_max_requests_per_round,
+                    )
+                    enriched_battles = battle_result.upserted
+                    battle_context_events_updated = battle_result.updated_event_contexts
                 aggregated_item_rows = 0
                 aggregated_build_rows = 0
                 aggregated_outcome_item_rows = 0
@@ -131,6 +142,7 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
                         "collection_round status=success fetched=%s inserted=%s "
                         "skipped_invalid=%s patch_updated=%s normalized_loadouts=%s "
                         "classified_contexts=%s "
+                        "enriched_battles=%s battle_context_events_updated=%s "
                         "aggregated_item_rows=%s aggregated_build_rows=%s "
                         "aggregated_outcome_item_rows=%s aggregated_outcome_build_rows=%s "
                         "duration_sec=%.3f"
@@ -141,6 +153,8 @@ async def _run(*, once: bool, interval: float | None, limit: int | None) -> int:
                     patch_n,
                     normalized_loadouts,
                     classified_contexts,
+                    enriched_battles,
+                    battle_context_events_updated,
                     aggregated_item_rows,
                     aggregated_build_rows,
                     aggregated_outcome_item_rows,

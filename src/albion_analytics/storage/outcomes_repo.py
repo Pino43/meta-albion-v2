@@ -252,7 +252,12 @@ def build_key_slot_value(build_key: str, slot: str) -> str | None:
     return value or None
 
 
-def _merge_metric_rows(rows: list[dict[str, Any]], *, key_name: str, key_value: str) -> dict[str, Any]:
+def _merge_metric_rows(
+    rows: list[dict[str, Any]],
+    *,
+    key_name: str,
+    key_value: str,
+) -> dict[str, Any]:
     avg_item_power_weight = 0
     avg_item_power_total = 0.0
     for row in rows:
@@ -1155,7 +1160,9 @@ async def fetch_item_family_detail(
     if family_row is None:
         return None
 
-    family_item_rows = [row for row in all_item_rows if item_family_key(row["item_type"]) == family_key]
+    family_item_rows = [
+        row for row in all_item_rows if item_family_key(row["item_type"]) == family_key
+    ]
     family_item_types = [row["item_type"] for row in family_item_rows]
     family_baseline = _baseline_rate(family_rows)
     family_total_appearance_count = sum(row["appearance_count"] for row in family_rows)

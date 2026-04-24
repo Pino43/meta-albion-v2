@@ -164,3 +164,10 @@ class GameinfoClient:
         if isinstance(data, list):
             return data
         return []
+
+    async def get_battle(self, battle_id: int | str) -> dict[str, Any]:
+        """Battle summary payload for a Gameinfo battle id."""
+        data = await self.get_json(f"battles/{battle_id}")
+        if isinstance(data, dict):
+            return data
+        return {}

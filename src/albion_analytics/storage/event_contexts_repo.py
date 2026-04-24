@@ -40,6 +40,8 @@ def _context_params(row: EventContext) -> tuple[Any, ...]:
         row.fight_scale_bucket,
         row.reported_participant_count,
         row.observed_kill_side_count,
+        row.battle_player_count,
+        row.scale_source,
         row.classifier_version,
     )
 
@@ -62,10 +64,12 @@ async def upsert_event_contexts(
       fight_scale_bucket,
       reported_participant_count,
       observed_kill_side_count,
+      battle_player_count,
+      scale_source,
       classifier_version,
       classified_at
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
     ON CONFLICT (source_region, event_id) DO UPDATE SET
       time_stamp = EXCLUDED.time_stamp,
       kill_area_raw = EXCLUDED.kill_area_raw,
@@ -74,6 +78,8 @@ async def upsert_event_contexts(
       fight_scale_bucket = EXCLUDED.fight_scale_bucket,
       reported_participant_count = EXCLUDED.reported_participant_count,
       observed_kill_side_count = EXCLUDED.observed_kill_side_count,
+      battle_player_count = EXCLUDED.battle_player_count,
+      scale_source = EXCLUDED.scale_source,
       classifier_version = EXCLUDED.classifier_version,
       classified_at = EXCLUDED.classified_at
     """

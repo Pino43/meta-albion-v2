@@ -37,6 +37,7 @@ albion-ranking-builds = "albion_analytics.scripts.ranking_builds:main"
 albion-serve-api = "albion_analytics.scripts.serve_api:main"
 albion-cleanup-retention = "albion_analytics.scripts.cleanup_retention:main"
 albion-check-ops = "albion_analytics.scripts.check_ops:main"
+albion-enrich-battles = "albion_analytics.scripts.enrich_battles:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/albion_analytics"]

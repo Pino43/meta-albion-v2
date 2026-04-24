@@ -74,3 +74,23 @@ async def test_get_json_raises_after_timeout_retries() -> None:
             await client.get_json("events")
 
     assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_get_battle_uses_battle_endpoint() -> None:
+    seen_path = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_path
+        seen_path = request.url.path
+        return httpx.Response(200, json={"id": 123, "players": {"a": {}, "b": {}}}, request=request)
+
+    async with GameinfoClient(
+        base_url="https://gameinfo.test/api/gameinfo",
+        rate_limit_per_sec=0,
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        data = await client.get_battle(123)
+
+    assert seen_path == "/api/gameinfo/battles/123"
+    assert data["id"] == 123

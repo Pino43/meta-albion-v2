@@ -202,6 +202,36 @@ DDL_STATEMENTS: list[str] = [
     ON event_contexts (content_type, fight_scale_bucket, time_stamp DESC)
     """,
     """
+    CREATE TABLE IF NOT EXISTS battle_contexts (
+      source_region TEXT NOT NULL,
+      battle_id BIGINT NOT NULL,
+      start_time TIMESTAMPTZ NULL,
+      end_time TIMESTAMPTZ NULL,
+      total_fame BIGINT NULL,
+      total_kills INT NULL,
+      player_count INT NOT NULL,
+      cluster_name TEXT NULL,
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (source_region, battle_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_battle_contexts_fetched
+    ON battle_contexts (fetched_at DESC)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_battle_contexts_player_count
+    ON battle_contexts (player_count DESC)
+    """,
+    """
+    ALTER TABLE event_contexts
+    ADD COLUMN IF NOT EXISTS battle_player_count INT NULL
+    """,
+    """
+    ALTER TABLE event_contexts
+    ADD COLUMN IF NOT EXISTS scale_source TEXT NULL
+    """,
+    """
     ALTER TABLE event_contexts
     DROP CONSTRAINT IF EXISTS chk_event_contexts_content_type
     """,

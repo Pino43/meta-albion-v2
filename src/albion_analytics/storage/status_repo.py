@@ -10,6 +10,7 @@ CORE_STATUS_TABLES: tuple[str, ...] = (
     "kill_events",
     "event_loadouts",
     "event_contexts",
+    "battle_contexts",
     "daily_item_usage",
     "daily_build_usage",
     "daily_item_outcomes",
@@ -28,6 +29,7 @@ async def check_core_tables(conn: psycopg.AsyncConnection) -> list[str]:
                 'kill_events',
                 'event_loadouts',
                 'event_contexts',
+                'battle_contexts',
                 'daily_item_usage',
                 'daily_build_usage',
                 'daily_item_outcomes',
@@ -50,6 +52,8 @@ async def fetch_api_status(conn: psycopg.AsyncConnection) -> dict[str, Any]:
             SELECT 'event_loadouts', count(*) FROM event_loadouts
             UNION ALL
             SELECT 'event_contexts', count(*) FROM event_contexts
+            UNION ALL
+            SELECT 'battle_contexts', count(*) FROM battle_contexts
             UNION ALL
             SELECT 'daily_item_usage', count(*) FROM daily_item_usage
             UNION ALL
