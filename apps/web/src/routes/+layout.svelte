@@ -11,25 +11,31 @@
 
   function isActive(href: string): boolean {
     const pathname = $page.url.pathname;
-    return href === '/' ? pathname === '/' : pathname.startsWith(href);
+    if (href === '/') {
+      return pathname === '/' || pathname.startsWith('/families/main_hand/');
+    }
+    const slot = href.split('/').at(-1);
+    return pathname.startsWith(href) || pathname.startsWith(`/families/${slot}/`);
   }
 </script>
 
 <div class="app-shell">
-  <header class="site-header">
-    <a class="brand" href="/">
-      <span class="brand-mark">AA</span>
-      <span class="brand-copy">
-        <strong>Albion Analytics</strong>
-        <small>Meta dashboard</small>
-      </span>
-    </a>
+  <header class="site-header-wrap">
+    <div class="site-header">
+      <a class="brand" href="/">
+        <span class="brand-mark">AA</span>
+        <span class="brand-copy">
+          <strong>Albion Analytics</strong>
+          <small>Meta dashboard</small>
+        </span>
+      </a>
 
-    <nav class="site-nav" aria-label="Primary">
-      {#each navItems as item}
-        <a class:active={isActive(item.href)} href={item.href}>{item.label}</a>
-      {/each}
-    </nav>
+      <nav class="site-nav" aria-label="Primary">
+        {#each navItems as item}
+          <a class:active={isActive(item.href)} href={item.href}>{item.label}</a>
+        {/each}
+      </nav>
+    </div>
   </header>
 
   <div class="page-frame">
@@ -57,9 +63,7 @@
 
   :global(body) {
     margin: 0;
-    background:
-      linear-gradient(180deg, #0f0f10 0 88px, transparent 88px),
-      var(--bg);
+    background: var(--bg);
     color: var(--text);
     font-family: 'IBM Plex Sans', 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
   }
@@ -76,6 +80,11 @@
 
   .app-shell {
     min-height: 100vh;
+  }
+
+  .site-header-wrap {
+    background: #0f0f10;
+    border-bottom: 1px solid #25231f;
   }
 
   .site-header {
@@ -155,7 +164,7 @@
   .page-frame {
     margin: 0 auto;
     max-width: var(--page-width);
-    padding: 12px 14px 28px;
+    padding: 24px 14px 28px;
   }
 
   @media (max-width: 860px) {

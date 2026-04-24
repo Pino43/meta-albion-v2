@@ -378,17 +378,13 @@
     align-items: center;
     display: grid;
     gap: 14px;
-    grid-template-columns: 72px minmax(0, 1fr);
+    grid-template-columns: 112px minmax(0, 1fr);
   }
 
   .hero img {
-    background: #f1eee7;
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    height: 72px;
+    height: 112px;
     object-fit: contain;
-    padding: 4px;
-    width: 72px;
+    width: 112px;
   }
 
   .hero-copy {
@@ -610,9 +606,9 @@
   }
 
   .build-piece img {
-    height: 42px;
+    height: 50px;
     object-fit: contain;
-    width: 42px;
+    width: 50px;
   }
 
   .build-piece span {

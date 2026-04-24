@@ -499,18 +499,15 @@
     align-items: center;
     color: inherit;
     display: grid;
-    gap: 12px;
-    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 14px;
+    grid-template-columns: 58px minmax(0, 1fr);
     text-decoration: none;
   }
 
   .item-link img {
-    background: #f5f2eb;
-    border: 1px solid var(--line);
-    height: 44px;
+    height: 58px;
     object-fit: contain;
-    padding: 4px;
-    width: 44px;
+    width: 58px;
   }
 
   .item-copy {

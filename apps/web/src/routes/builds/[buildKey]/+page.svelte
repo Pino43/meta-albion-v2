@@ -512,12 +512,9 @@
   }
 
   .component-tile img {
-    background: #f1eee7;
-    border: 1px solid var(--line);
-    height: 42px;
+    height: 58px;
     object-fit: contain;
-    padding: 3px;
-    width: 42px;
+    width: 58px;
   }
 
   .distribution-row {

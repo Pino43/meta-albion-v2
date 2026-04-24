@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
 
   import { page } from '$app/stores';
-  import { fetchItemFamilyDetail, fightScales, regions, type BuildComponents, type BuildSummary, type ItemFamilyDetail, type LeaderboardFilters } from '$lib/api';
+  import { fetchItemFamilyDetail, fightScales, regions, type BuildComponents, type BuildSummary, type FightScaleFilter, type ItemFamilyDetail, type LeaderboardFilters } from '$lib/api';
   import {
     applyDraft,
     dayOptions,
@@ -45,8 +45,13 @@
   let filters: LeaderboardFilters = defaultFilters();
   let draft: FilterDraft = draftFromFilters(filters);
   let detail: ItemFamilyDetail | null = null;
+  let buildDetail: ItemFamilyDetail | null = null;
   let state: LoadState = 'loading';
+  let buildState: LoadState = 'loading';
+  let buildScale: FightScaleFilter = 'all';
   let requestId = 0;
+  let buildRequestId = 0;
+  const buildScaleOptions = fightScales.filter((value) => value !== 'unknown');
 
   $: slot = data.slot;
   $: familyKey = decodeURIComponent(data.familyKey ?? $page.params.familyKey ?? '');
@@ -54,6 +59,10 @@
   $: detailKey = initialized ? JSON.stringify({ slot, familyKey, filters }) : '';
   $: if (detailKey) {
     void loadDetail();
+  }
+  $: buildDetailKey = initialized ? JSON.stringify({ slot, familyKey, filters, buildScale }) : '';
+  $: if (buildDetailKey) {
+    void loadBuildDetail();
   }
   $: if (initialized) {
     syncUrl();
@@ -95,6 +104,26 @@
       if (current !== requestId) return;
       detail = null;
       state = 'error';
+    }
+  }
+
+  async function loadBuildDetail() {
+    const current = ++buildRequestId;
+    buildState = 'loading';
+
+    try {
+      const buildFilters = {
+        ...detailFiltersFrom(filters),
+        fightScale: buildScale
+      };
+      const result = await fetchItemFamilyDetail(slot, familyKey, buildFilters);
+      if (current !== buildRequestId) return;
+      buildDetail = result.data;
+      buildState = 'ready';
+    } catch {
+      if (current !== buildRequestId) return;
+      buildDetail = null;
+      buildState = 'error';
     }
   }
 
@@ -216,64 +245,49 @@
       <button class="button button-muted" type="button" on:click={() => void loadDetail()}>Retry</button>
     </section>
   {:else}
-    <section class="content-grid">
-      <section class="surface">
-        <p class="eyebrow">Summary</p>
-        <dl class="metric-strip">
-          {#each metricsFor(detail.summary) as metric}
-            <div>
-              <dt>{metric.label}</dt>
-              <dd class:positive={metric.positive}>{metric.value}</dd>
-            </div>
-          {/each}
-        </dl>
-      </section>
-
-      <section class="surface">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Variants</p>
-            <h2>Tier breakdown</h2>
-          </div>
-          <span>{detail.variants.length} tracked variants</span>
-        </div>
-
-        <div class="variant-list">
-          {#each detail.variants as variant}
-            {@const parsed = parseItemType(variant.item_type)}
-            <div class="variant-row">
-              <div class="variant-copy">
-                <img alt={parsed.label} src={itemImageUrl(variant.item_type)} loading="lazy" />
-                <div>
-                  <strong>{parsed.tier}{parsed.enchantment}</strong>
-                  <code>{variant.item_type}</code>
-                </div>
+    <section class="detail-grid">
+      <div class="primary-column">
+        <section class="surface">
+          <p class="eyebrow">Summary</p>
+          <dl class="metric-strip">
+            {#each metricsFor(detail.summary) as metric}
+              <div>
+                <dt>{metric.label}</dt>
+                <dd class:positive={metric.positive}>{metric.value}</dd>
               </div>
-              <div class="variant-metrics">
-                <span>{formatSignedPercent(variant.adjusted_score)}</span>
-                <span>{formatCompact(variant.sample)}</span>
-              </div>
-            </div>
-          {/each}
-        </div>
-      </section>
-    </section>
+            {/each}
+          </dl>
+        </section>
 
-    <section class="content-grid">
-      <section class="surface">
+        <section class="surface">
         <div class="section-head">
           <div>
             <p class="eyebrow">Builds</p>
             <h2>Top combinations</h2>
           </div>
-          <span>Open a build page only when you want the whole loadout.</span>
+          <label class="inline-filter">
+            Build scale
+            <select bind:value={buildScale}>
+              {#each buildScaleOptions as option}
+                <option value={option}>{fightScaleLabel(option)}</option>
+              {/each}
+            </select>
+          </label>
         </div>
 
         <div class="build-list">
-          {#if detail.builds.top_builds.length === 0}
+          {#if buildState === 'loading'}
+            <div class="build-loading" aria-label="Loading build list"></div>
+          {:else if buildState === 'error' || !buildDetail}
+            <div class="empty-state compact">
+              <h3>Builds unavailable.</h3>
+              <p>The selected build scale could not be loaded right now.</p>
+              <button class="button button-muted" type="button" on:click={() => void loadBuildDetail()}>Retry</button>
+            </div>
+          {:else if buildDetail.builds.top_builds.length === 0}
             <p class="empty-copy">No build rows yet for this family.</p>
           {:else}
-            {#each detail.builds.top_builds as build}
+            {#each buildDetail.builds.top_builds as build}
               {@const previewComponents = buildComponents(build.components)}
               <a class="build-card" href={buildHref(build.build_key)}>
                 <div class="build-card-head">
@@ -301,29 +315,61 @@
           {/if}
         </div>
       </section>
+      </div>
 
-      <section class="surface">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Distribution</p>
-            <h2>Fight scale split</h2>
-          </div>
-        </div>
-
-        <div class="distribution-list">
-          {#each detail.distributions.by_fight_scale as row}
-            <div class="distribution-row">
-              <div class="distribution-copy">
-                <strong>{fightScaleLabel((row.fight_scale as typeof fightScales[number] | undefined) ?? 'unknown')}</strong>
-                <span>{formatPercent(row.kill_side_rate)} / {formatCompact(row.sample)} sample</span>
-              </div>
-              <div class="bar-track">
-                <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
-              </div>
+      <div class="side-column">
+        <section class="surface">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Variants</p>
+              <h2>Tier breakdown</h2>
             </div>
-          {/each}
-        </div>
-      </section>
+            <span>{detail.variants.length} tracked variants</span>
+          </div>
+
+          <div class="variant-list">
+            {#each detail.variants as variant}
+              {@const parsed = parseItemType(variant.item_type)}
+              <div class="variant-row">
+                <div class="variant-copy">
+                  <img alt={parsed.label} src={itemImageUrl(variant.item_type)} loading="lazy" />
+                  <div>
+                    <strong>{parsed.tier}{parsed.enchantment}</strong>
+                    <code>{variant.item_type}</code>
+                  </div>
+                </div>
+                <div class="variant-metrics">
+                  <span>{formatSignedPercent(variant.adjusted_score)}</span>
+                  <span>{formatCompact(variant.sample)}</span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </section>
+
+        <section class="surface">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Distribution</p>
+              <h2>Fight scale split</h2>
+            </div>
+          </div>
+
+          <div class="distribution-list">
+            {#each detail.distributions.by_fight_scale as row}
+              <div class="distribution-row">
+                <div class="distribution-copy">
+                  <strong>{fightScaleLabel((row.fight_scale as typeof fightScales[number] | undefined) ?? 'unknown')}</strong>
+                  <span>{formatPercent(row.kill_side_rate)} / {formatCompact(row.sample)} sample</span>
+                </div>
+                <div class="bar-track">
+                  <span style={`width: ${Math.max(row.kill_side_rate * 100, 3)}%`}></span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </section>
+      </div>
     </section>
   {/if}
 </main>
@@ -341,6 +387,7 @@
     flex-wrap: wrap;
     gap: 8px;
     font-size: 12px;
+    margin-bottom: 6px;
   }
 
   .crumb-row a {
@@ -359,23 +406,22 @@
     align-items: center;
     display: grid;
     gap: 18px;
-    grid-template-columns: 88px minmax(0, 1fr);
+    grid-template-columns: 118px minmax(0, 1fr);
   }
 
   .hero img {
-    background: #f5f2eb;
-    border: 1px solid var(--line);
-    height: 88px;
+    height: 118px;
     object-fit: contain;
-    padding: 6px;
-    width: 88px;
+    width: 118px;
   }
 
   .hero-copy,
   .toolbar,
   .build-list,
   .distribution-list,
-  .variant-list {
+  .variant-list,
+  .primary-column,
+  .side-column {
     display: grid;
     gap: 12px;
   }
@@ -483,10 +529,10 @@
     justify-items: start;
   }
 
-  .content-grid {
+  .detail-grid {
     display: grid;
     gap: 16px;
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 440px);
   }
 
   .metric-strip {
@@ -523,6 +569,14 @@
     justify-content: space-between;
   }
 
+  .inline-filter {
+    min-width: 170px;
+  }
+
+  .inline-filter select {
+    min-height: 34px;
+  }
+
   .variant-list {
     gap: 8px;
   }
@@ -538,12 +592,9 @@
   }
 
   .variant-copy img {
-    background: #f5f2eb;
-    border: 1px solid var(--line);
-    height: 42px;
+    height: 52px;
     object-fit: contain;
-    padding: 4px;
-    width: 42px;
+    width: 52px;
   }
 
   .variant-copy div {
@@ -584,9 +635,9 @@
   }
 
   .build-piece img {
-    height: 42px;
+    height: 50px;
     object-fit: contain;
-    width: 42px;
+    width: 50px;
   }
 
   .build-piece span {
@@ -642,9 +693,29 @@
     color: #f2cb80;
   }
 
+  .build-loading {
+    animation: pulse 1.1s ease-in-out infinite;
+    background: linear-gradient(90deg, #efebe3, #fbfaf7, #efebe3);
+    height: 120px;
+  }
+
+  .empty-state.compact {
+    padding: 0;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 0.65;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
   @media (max-width: 980px) {
     .hero,
-    .content-grid,
+    .detail-grid,
     .metric-strip,
     .toolbar-grid {
       grid-template-columns: 1fr;
